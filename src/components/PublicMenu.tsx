@@ -557,6 +557,14 @@ export const PublicMenu: React.FC<PublicMenuProps> = ({ restaurantName: propName
                 </div>
             )}
             <Toaster position="top-center" />
+
+            {/* Footer */}
+            <footer className="text-center py-6 mt-4">
+                <p className="text-xs text-slate-400">
+                    مدعوم بواسطة{' '}
+                    <span className="font-bold text-slate-500">⚡ Smart Food</span>
+                </p>
+            </footer>
         </div>
     );
 };
