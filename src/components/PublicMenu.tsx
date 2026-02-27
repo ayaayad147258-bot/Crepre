@@ -7,7 +7,13 @@ import { cn } from '../utils';
 import toast, { Toaster } from 'react-hot-toast';
 import { listenToCategories, listenToProducts, listenToStoreSettings } from '../services/db';
 
-export const PublicMenu: React.FC = () => {
+interface PublicMenuProps {
+    restaurantName?: string;
+    restaurantLogo?: string;
+    theme?: { primaryColor: string; secondaryColor: string };
+}
+
+export const PublicMenu: React.FC<PublicMenuProps> = ({ restaurantName: propName, restaurantLogo: propLogo, theme: propTheme }) => {
     const [categories, setCategories] = useState<Category[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
     const [activeCategory, setActiveCategory] = useState<string>('all');
@@ -25,15 +31,27 @@ export const PublicMenu: React.FC = () => {
     const [orderComplete, setOrderComplete] = useState(false);
 
     // Store info (from Firestore so it works on any device)
+    // If props are provided (from multi-tenant route), use them; otherwise fetch from Firestore
     const [storeSettings, setStoreSettings] = useState<{ name?: string; logo?: string }>({});
-    const restaurantName = storeSettings.name || 'مطعمنا';
-    const restaurantLogo = storeSettings.logo || '';
+    const restaurantName = propName || storeSettings.name || 'مطعمنا';
+    const restaurantLogo = propLogo !== undefined ? propLogo : (storeSettings.logo || '');
+
+    // Apply theme from props if provided
+    useEffect(() => {
+        if (propTheme) {
+            document.documentElement.style.setProperty('--color-primary', propTheme.primaryColor);
+            document.documentElement.style.setProperty('--color-secondary', propTheme.secondaryColor);
+        }
+    }, [propTheme]);
 
     useEffect(() => {
-        // Real-time listener for store settings
-        const unsubSettings = listenToStoreSettings((data) => {
-            setStoreSettings(data);
-        });
+        // Only fetch store settings from Firestore if no props were provided
+        let unsubSettings: (() => void) | undefined;
+        if (!propName) {
+            unsubSettings = listenToStoreSettings((data) => {
+                setStoreSettings(data);
+            });
+        }
 
         // Real-time listener for categories
         const unsubCats = listenToCategories((cats) => {
@@ -48,11 +66,11 @@ export const PublicMenu: React.FC = () => {
         });
 
         return () => {
-            unsubSettings();
+            unsubSettings?.();
             unsubCats();
             unsubProds();
         };
-    }, []);
+    }, [propName]);
 
     const getPrice = (p: Product, size?: 'mini' | 'medium' | 'large' | 'roll') => {
         if (size && p.sizes && p.sizes[size]) return p.sizes[size];

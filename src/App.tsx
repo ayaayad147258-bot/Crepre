@@ -11,7 +11,6 @@ import { Drivers } from './components/Drivers';
 import { Expenses } from './components/Expenses';
 import { Login } from './components/Login';
 import { Users } from './components/Users';
-import { PublicMenu } from './components/PublicMenu';
 import { OnlineOrders } from './components/OnlineOrders';
 import { User } from './types';
 import { cn, checkAccess } from './utils';
@@ -59,10 +58,6 @@ export default function App() {
     setUser(null);
     localStorage.removeItem('pos_user');
   };
-
-  if (window.location.pathname === '/menu') {
-    return <PublicMenu />;
-  }
 
   if (!user) {
     return <Login isRtl={isRtl} onLogin={handleLogin} />;
