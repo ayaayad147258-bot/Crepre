@@ -32,6 +32,17 @@ export default function App() {
     document.documentElement.lang = isRtl ? 'ar' : 'en';
   }, [isRtl]);
 
+  // Dynamic page title from restaurant name in settings
+  useEffect(() => {
+    const updateTitle = () => {
+      const restaurantName = localStorage.getItem('pos_restaurant_name');
+      document.title = restaurantName ? restaurantName : 'Smart Food';
+    };
+    updateTitle();
+    window.addEventListener('storage', updateTitle);
+    return () => window.removeEventListener('storage', updateTitle);
+  }, []);
+
   const handleLogin = (loggedInUser: User) => {
     setUser(loggedInUser);
     localStorage.setItem('pos_user', JSON.stringify(loggedInUser));

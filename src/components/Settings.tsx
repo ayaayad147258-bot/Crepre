@@ -166,6 +166,9 @@ export const Settings: React.FC<SettingsProps> = ({ isRtl }) => {
       currency,
     }).catch(console.error);
 
+    // Update page title immediately
+    document.title = restaurantName || 'Smart Food';
+
     // Simulate API call
     setTimeout(() => {
       setIsSaving(false);
