@@ -127,7 +127,7 @@ export const Login: React.FC<LoginProps> = ({ isRtl, onLogin }) => {
                     </form>
 
                     <div className="mt-8 pt-8 border-t border-slate-100 flex items-center justify-between text-sm font-bold text-slate-400">
-                        <span>Powered by CREPREE</span>
+                        <span>⚡ Powered by Smart Food</span>
                         <span>v1.0.0</span>
                     </div>
                 </div>
