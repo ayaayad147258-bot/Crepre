@@ -364,3 +364,53 @@ export const listenToStoreSettings = (callback: (data: any) => void) => {
         callback(snap.exists() ? snap.data() : {});
     });
 };
+
+// ==========================================
+// MULTI-TENANT: Restaurant-specific menu
+// Each restaurant has its own subcollections:
+//   /restaurants/{restaurantId}/categories
+//   /restaurants/{restaurantId}/products
+// ==========================================
+export const listenToRestaurantCategories = (restaurantId: string, callback: (data: Category[]) => void) => {
+    const q = query(collection(db, 'restaurants', restaurantId, 'categories'));
+    return onSnapshot(q, (snapshot) => {
+        const categories: Category[] = [];
+        snapshot.forEach((docSnap) => {
+            categories.push({ id: docSnap.id, ...docSnap.data() } as unknown as Category);
+        });
+        callback(categories);
+    });
+};
+
+export const listenToRestaurantProducts = (restaurantId: string, callback: (data: Product[]) => void) => {
+    const q = query(collection(db, 'restaurants', restaurantId, 'products'));
+    return onSnapshot(q, (snapshot) => {
+        const products: Product[] = [];
+        snapshot.forEach((docSnap) => {
+            products.push({ id: docSnap.id, ...docSnap.data() } as unknown as Product);
+        });
+        callback(products);
+    });
+};
+
+export const addRestaurantCategory = async (restaurantId: string, data: any) => {
+    return await addDoc(collection(db, 'restaurants', restaurantId, 'categories'), {
+        ...data,
+        created_at: new Date().toISOString(),
+    });
+};
+
+export const addRestaurantProduct = async (restaurantId: string, data: any) => {
+    return await addDoc(collection(db, 'restaurants', restaurantId, 'products'), {
+        ...data,
+        created_at: new Date().toISOString(),
+    });
+};
+
+export const updateRestaurantProduct = async (restaurantId: string, productId: string, data: any) => {
+    return await updateDoc(doc(db, 'restaurants', restaurantId, 'products', productId), data);
+};
+
+export const deleteRestaurantProduct = async (restaurantId: string, productId: string) => {
+    return await deleteDoc(doc(db, 'restaurants', restaurantId, 'products', productId));
+};

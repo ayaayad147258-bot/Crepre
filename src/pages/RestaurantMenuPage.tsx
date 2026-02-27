@@ -62,6 +62,7 @@ export const RestaurantMenuPage: React.FC = () => {
     // Pass restaurant info to PublicMenu
     return (
         <PublicMenu
+            restaurantId={restaurantId}
             restaurantName={state.data.name}
             restaurantLogo={state.data.logo}
             theme={state.data.theme}

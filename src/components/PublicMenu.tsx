@@ -5,15 +5,16 @@ import { collection, addDoc, serverTimestamp, setDoc, doc } from 'firebase/fires
 import { Category, Product, OrderItem } from '../types';
 import { cn } from '../utils';
 import toast, { Toaster } from 'react-hot-toast';
-import { listenToCategories, listenToProducts, listenToStoreSettings } from '../services/db';
+import { listenToCategories, listenToProducts, listenToStoreSettings, listenToRestaurantCategories, listenToRestaurantProducts } from '../services/db';
 
 interface PublicMenuProps {
     restaurantName?: string;
     restaurantLogo?: string;
+    restaurantId?: string;  // If provided, reads menu from restaurant subcollection
     theme?: { primaryColor: string; secondaryColor: string };
 }
 
-export const PublicMenu: React.FC<PublicMenuProps> = ({ restaurantName: propName, restaurantLogo: propLogo, theme: propTheme }) => {
+export const PublicMenu: React.FC<PublicMenuProps> = ({ restaurantName: propName, restaurantLogo: propLogo, restaurantId, theme: propTheme }) => {
     const [categories, setCategories] = useState<Category[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
     const [activeCategory, setActiveCategory] = useState<string>('all');
@@ -53,24 +54,35 @@ export const PublicMenu: React.FC<PublicMenuProps> = ({ restaurantName: propName
             });
         }
 
-        // Real-time listener for categories
-        const unsubCats = listenToCategories((cats) => {
-            setCategories(cats);
-        });
+        let unsubCats: () => void;
+        let unsubProds: () => void;
 
-        // Real-time listener for products - show all that are not explicitly inactive
-        const unsubProds = listenToProducts((prods) => {
-            // Show products where active is true OR active is not set (undefined/null)
-            setProducts(prods.filter(p => p.active !== false));
-            setIsLoading(false);
-        });
+        if (restaurantId) {
+            // Multi-tenant: read from restaurant's own subcollection
+            unsubCats = listenToRestaurantCategories(restaurantId, (cats) => {
+                setCategories(cats);
+            });
+            unsubProds = listenToRestaurantProducts(restaurantId, (prods) => {
+                setProducts(prods.filter(p => p.active !== false));
+                setIsLoading(false);
+            });
+        } else {
+            // Legacy: read from global collections (for /menu route)
+            unsubCats = listenToCategories((cats) => {
+                setCategories(cats);
+            });
+            unsubProds = listenToProducts((prods) => {
+                setProducts(prods.filter(p => p.active !== false));
+                setIsLoading(false);
+            });
+        }
 
         return () => {
             unsubSettings?.();
             unsubCats();
             unsubProds();
         };
-    }, [propName]);
+    }, [propName, restaurantId]);
 
     const getPrice = (p: Product, size?: 'mini' | 'medium' | 'large' | 'roll') => {
         if (size && p.sizes && p.sizes[size]) return p.sizes[size];
