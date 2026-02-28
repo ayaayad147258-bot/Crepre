@@ -1,5 +1,6 @@
 {
     "hosting": {
+        "site": "crepree",
         "public": "dist",
         "ignore": [
             "firebase.json",

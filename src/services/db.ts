@@ -18,11 +18,18 @@ import {
 import { db } from '../lib/firebase';
 import { Category, Product, Order, Customer, Driver } from '../types';
 
+// Helper: get base path for a restaurant's subcollection
+const rCol = (restaurantId: string, colName: string) =>
+    collection(db, 'restaurants', restaurantId, colName);
+
+const rDoc = (restaurantId: string, colName: string, docId: string) =>
+    doc(db, 'restaurants', restaurantId, colName, docId);
+
 // ==========================================
 // CATEGORIES
 // ==========================================
-export const listenToCategories = (callback: (data: Category[]) => void) => {
-    const q = query(collection(db, 'categories'));
+export const listenToCategories = (restaurantId: string, callback: (data: Category[]) => void) => {
+    const q = query(rCol(restaurantId, 'categories'));
     return onSnapshot(q, (snapshot) => {
         const categories: Category[] = [];
         snapshot.forEach((doc) => {
@@ -32,26 +39,26 @@ export const listenToCategories = (callback: (data: Category[]) => void) => {
     });
 };
 
-export const addCategory = async (data: any) => {
-    return await addDoc(collection(db, 'categories'), {
+export const addCategory = async (restaurantId: string, data: any) => {
+    return await addDoc(rCol(restaurantId, 'categories'), {
         ...data,
         created_at: new Date().toISOString()
     });
 };
 
-export const updateCategory = async (id: string, data: any) => {
-    return await updateDoc(doc(db, 'categories', id), data);
+export const updateCategory = async (restaurantId: string, id: string, data: any) => {
+    return await updateDoc(rDoc(restaurantId, 'categories', id), data);
 };
 
-export const deleteCategory = async (id: string) => {
-    return await deleteDoc(doc(db, 'categories', id));
+export const deleteCategory = async (restaurantId: string, id: string) => {
+    return await deleteDoc(rDoc(restaurantId, 'categories', id));
 };
 
 // ==========================================
 // PRODUCTS
 // ==========================================
-export const listenToProducts = (callback: (data: Product[]) => void) => {
-    const q = query(collection(db, 'products'));
+export const listenToProducts = (restaurantId: string, callback: (data: Product[]) => void) => {
+    const q = query(rCol(restaurantId, 'products'));
     return onSnapshot(q, (snapshot) => {
         const products: Product[] = [];
         snapshot.forEach((doc) => {
@@ -61,23 +68,23 @@ export const listenToProducts = (callback: (data: Product[]) => void) => {
     });
 };
 
-export const addProduct = async (data: any) => {
-    return await addDoc(collection(db, 'products'), {
+export const addProduct = async (restaurantId: string, data: any) => {
+    return await addDoc(rCol(restaurantId, 'products'), {
         ...data,
         created_at: new Date().toISOString()
     });
 };
 
-export const updateProduct = async (id: string, data: any) => {
-    return await updateDoc(doc(db, 'products', id), data);
+export const updateProduct = async (restaurantId: string, id: string, data: any) => {
+    return await updateDoc(rDoc(restaurantId, 'products', id), data);
 };
 
-export const deleteProduct = async (id: string) => {
-    return await deleteDoc(doc(db, 'products', id));
+export const deleteProduct = async (restaurantId: string, id: string) => {
+    return await deleteDoc(rDoc(restaurantId, 'products', id));
 };
 
-export const deleteProductsByCategory = async (categoryId: string) => {
-    const q = query(collection(db, 'products'), where('category_id', '==', categoryId));
+export const deleteProductsByCategory = async (restaurantId: string, categoryId: string) => {
+    const q = query(rCol(restaurantId, 'products'), where('category_id', '==', categoryId));
     const snapshot = await getDocs(q);
     const batch = writeBatch(db);
     snapshot.docs.forEach((productDoc) => {
@@ -86,10 +93,10 @@ export const deleteProductsByCategory = async (categoryId: string) => {
     return await batch.commit();
 };
 
-export const deleteProductsBatch = async (productIds: string[]) => {
+export const deleteProductsBatch = async (restaurantId: string, productIds: string[]) => {
     const batch = writeBatch(db);
     productIds.forEach((id) => {
-        batch.delete(doc(db, 'products', id));
+        batch.delete(rDoc(restaurantId, 'products', id));
     });
     return await batch.commit();
 };
@@ -97,8 +104,8 @@ export const deleteProductsBatch = async (productIds: string[]) => {
 // ==========================================
 // INVENTORY
 // ==========================================
-export const listenToInventory = (callback: (data: any[]) => void) => {
-    const q = query(collection(db, 'inventory'));
+export const listenToInventory = (restaurantId: string, callback: (data: any[]) => void) => {
+    const q = query(rCol(restaurantId, 'inventory'));
     return onSnapshot(q, (snapshot) => {
         const items: any[] = [];
         snapshot.forEach((doc) => {
@@ -108,23 +115,23 @@ export const listenToInventory = (callback: (data: any[]) => void) => {
     });
 };
 
-export const addInventoryItem = async (data: any) => {
-    return await addDoc(collection(db, 'inventory'), data);
+export const addInventoryItem = async (restaurantId: string, data: any) => {
+    return await addDoc(rCol(restaurantId, 'inventory'), data);
 };
 
-export const updateInventoryItem = async (id: string, data: any) => {
-    return await updateDoc(doc(db, 'inventory', id), data);
+export const updateInventoryItem = async (restaurantId: string, id: string, data: any) => {
+    return await updateDoc(rDoc(restaurantId, 'inventory', id), data);
 };
 
-export const deleteInventoryItem = async (id: string) => {
-    return await deleteDoc(doc(db, 'inventory', id));
+export const deleteInventoryItem = async (restaurantId: string, id: string) => {
+    return await deleteDoc(rDoc(restaurantId, 'inventory', id));
 };
 
 // ==========================================
 // RECIPES
 // ==========================================
-export const listenToRecipes = (callback: (data: any[]) => void) => {
-    const q = query(collection(db, 'recipes'));
+export const listenToRecipes = (restaurantId: string, callback: (data: any[]) => void) => {
+    const q = query(rCol(restaurantId, 'recipes'));
     return onSnapshot(q, (snapshot) => {
         const recipes: any[] = [];
         snapshot.forEach((doc) => {
@@ -134,19 +141,19 @@ export const listenToRecipes = (callback: (data: any[]) => void) => {
     });
 };
 
-export const addRecipe = async (data: any) => {
-    return await addDoc(collection(db, 'recipes'), data);
+export const addRecipe = async (restaurantId: string, data: any) => {
+    return await addDoc(rCol(restaurantId, 'recipes'), data);
 };
 
-export const deleteRecipe = async (id: string) => {
-    return await deleteDoc(doc(db, 'recipes', id));
+export const deleteRecipe = async (restaurantId: string, id: string) => {
+    return await deleteDoc(rDoc(restaurantId, 'recipes', id));
 };
 
 // ==========================================
 // CUSTOMERS
 // ==========================================
-export const listenToCustomers = (callback: (data: Customer[]) => void) => {
-    const q = query(collection(db, 'customers'));
+export const listenToCustomers = (restaurantId: string, callback: (data: Customer[]) => void) => {
+    const q = query(rCol(restaurantId, 'customers'));
     return onSnapshot(q, (snapshot) => {
         const customers: Customer[] = [];
         snapshot.forEach((doc) => {
@@ -156,26 +163,26 @@ export const listenToCustomers = (callback: (data: Customer[]) => void) => {
     });
 };
 
-export const addCustomer = async (data: Omit<Customer, 'id' | 'created_at'>) => {
-    return await addDoc(collection(db, 'customers'), {
+export const addCustomer = async (restaurantId: string, data: Omit<Customer, 'id' | 'created_at'>) => {
+    return await addDoc(rCol(restaurantId, 'customers'), {
         ...data,
         created_at: new Date().toISOString()
     });
 };
 
-export const updateCustomer = async (id: string, data: Partial<Customer>) => {
-    return await updateDoc(doc(db, 'customers', id), data);
+export const updateCustomer = async (restaurantId: string, id: string, data: Partial<Customer>) => {
+    return await updateDoc(rDoc(restaurantId, 'customers', id), data);
 };
 
-export const deleteCustomer = async (id: string) => {
-    return await deleteDoc(doc(db, 'customers', id));
+export const deleteCustomer = async (restaurantId: string, id: string) => {
+    return await deleteDoc(rDoc(restaurantId, 'customers', id));
 };
 
 // ==========================================
 // DRIVERS
 // ==========================================
-export const listenToDrivers = (callback: (data: Driver[]) => void) => {
-    const q = query(collection(db, 'drivers'));
+export const listenToDrivers = (restaurantId: string, callback: (data: Driver[]) => void) => {
+    const q = query(rCol(restaurantId, 'drivers'));
     return onSnapshot(q, (snapshot) => {
         const drivers: Driver[] = [];
         snapshot.forEach((doc) => {
@@ -185,8 +192,8 @@ export const listenToDrivers = (callback: (data: Driver[]) => void) => {
     });
 };
 
-export const addDriver = async (data: Omit<Driver, 'id'>) => {
-    return await addDoc(collection(db, 'drivers'), {
+export const addDriver = async (restaurantId: string, data: Omit<Driver, 'id'>) => {
+    return await addDoc(rCol(restaurantId, 'drivers'), {
         ...data,
         status: 'available',
         current_deliveries: 0,
@@ -196,19 +203,19 @@ export const addDriver = async (data: Omit<Driver, 'id'>) => {
     });
 };
 
-export const updateDriver = async (id: string, data: Partial<Driver>) => {
-    return await updateDoc(doc(db, 'drivers', id), data);
+export const updateDriver = async (restaurantId: string, id: string, data: Partial<Driver>) => {
+    return await updateDoc(rDoc(restaurantId, 'drivers', id), data);
 };
 
-export const deleteDriver = async (id: string) => {
-    return await deleteDoc(doc(db, 'drivers', id));
+export const deleteDriver = async (restaurantId: string, id: string) => {
+    return await deleteDoc(rDoc(restaurantId, 'drivers', id));
 };
 
 // ==========================================
 // ORDERS
 // ==========================================
-export const listenToOrders = (callback: (data: any[]) => void) => {
-    const q = query(collection(db, 'orders'), orderBy('created_at', 'desc'));
+export const listenToOrders = (restaurantId: string, callback: (data: any[]) => void) => {
+    const q = query(rCol(restaurantId, 'orders'), orderBy('created_at', 'desc'));
     return onSnapshot(q, (snapshot) => {
         const orders: any[] = [];
         snapshot.forEach((doc) => {
@@ -218,15 +225,14 @@ export const listenToOrders = (callback: (data: any[]) => void) => {
     });
 };
 
-export const addOrder = async (orderData: any) => {
+export const addOrder = async (restaurantId: string, orderData: any) => {
     // 1. Get the start of today
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
 
     // 2. Query for all orders today to find the highest daily_id
-    // We avoid orderBy('daily_id') here to prevent Firebase missing index errors
     const q = query(
-        collection(db, 'orders'),
+        rCol(restaurantId, 'orders'),
         where('created_at', '>=', startOfToday)
     );
 
@@ -250,7 +256,7 @@ export const addOrder = async (orderData: any) => {
         console.error("Error fetching last daily order ID", e);
     }
 
-    const docRef = await addDoc(collection(db, 'orders'), {
+    const docRef = await addDoc(rCol(restaurantId, 'orders'), {
         ...orderData,
         daily_id: nextDailyId,
         created_at: new Date().toISOString(),
@@ -262,14 +268,13 @@ export const addOrder = async (orderData: any) => {
             const batch = writeBatch(db);
             const inventoryToDeduct = new Map<string, number>();
 
-            // Aggregate ingredient deduction requirements
             for (const item of orderData.items) {
                 if (!item.product_id) continue;
 
                 const productIdStr = item.product_id.toString();
                 const itemQty = Number(item.quantity) || 1;
 
-                const rq = query(collection(db, 'recipes'), where('product_id', '==', productIdStr));
+                const rq = query(rCol(restaurantId, 'recipes'), where('product_id', '==', productIdStr));
                 const rSnap = await getDocs(rq);
 
                 rSnap.forEach(recipeDoc => {
@@ -282,12 +287,11 @@ export const addOrder = async (orderData: any) => {
                 });
             }
 
-            // Apply deductions to inventory
             let hasUpdates = false;
             for (const [ingId, qtyToDeduct] of inventoryToDeduct.entries()) {
                 if (qtyToDeduct <= 0) continue;
 
-                const ingRef = doc(db, 'inventory', ingId);
+                const ingRef = rDoc(restaurantId, 'inventory', ingId);
                 const ingSnap = await getDoc(ingRef);
                 if (ingSnap.exists()) {
                     const currentStock = Number(ingSnap.data().stock_level) || 0;
@@ -301,38 +305,36 @@ export const addOrder = async (orderData: any) => {
             }
         } catch (err) {
             console.error("Failed to deduct inventory on order creation:", err);
-            // Non-blocking error, order is still placed
         }
     }
 
     return { id: docRef.id, daily_id: nextDailyId };
 };
 
-export const updateOrderStatus = async (id: string, status: string, driver_id?: string) => {
-    // If the order is being marked as served or cancelled, and it has a driver_id, free up the driver
+export const updateOrderStatus = async (restaurantId: string, id: string, status: string, driver_id?: string) => {
     if ((status === 'served' || status === 'cancelled') && driver_id) {
-        await updateDriver(driver_id, { status: 'available' });
+        await updateDriver(restaurantId, driver_id, { status: 'available' });
     }
-    return await updateDoc(doc(db, 'orders', id), { status });
+    return await updateDoc(rDoc(restaurantId, 'orders', id), { status });
 };
 
-export const updateOrderAsDispacthed = async (id: string, driver_id: string, status: string) => {
-    return await updateDoc(doc(db, 'orders', id), { driver_id, status });
+export const updateOrderAsDispacthed = async (restaurantId: string, id: string, driver_id: string, status: string) => {
+    return await updateDoc(rDoc(restaurantId, 'orders', id), { driver_id, status });
 };
 
-export const updateOrderDriver = async (id: string, driver_id: string) => {
-    return await updateDoc(doc(db, 'orders', id), { driver_id });
+export const updateOrderDriver = async (restaurantId: string, id: string, driver_id: string) => {
+    return await updateDoc(rDoc(restaurantId, 'orders', id), { driver_id });
 };
 
-export const markOrderAsPaid = async (id: string) => {
-    return await updateDoc(doc(db, 'orders', id), { is_paid: true });
+export const markOrderAsPaid = async (restaurantId: string, id: string) => {
+    return await updateDoc(rDoc(restaurantId, 'orders', id), { is_paid: true });
 };
 
 // ==========================================
 // EXPENSES
 // ==========================================
-export const listenToExpenses = (callback: (data: any[]) => void) => {
-    const q = query(collection(db, 'expenses'), orderBy('date', 'desc'));
+export const listenToExpenses = (restaurantId: string, callback: (data: any[]) => void) => {
+    const q = query(rCol(restaurantId, 'expenses'), orderBy('date', 'desc'));
     return onSnapshot(q, (snapshot) => {
         const expenses: any[] = [];
         snapshot.forEach((doc) => {
@@ -342,75 +344,97 @@ export const listenToExpenses = (callback: (data: any[]) => void) => {
     });
 };
 
-export const addExpense = async (data: Omit<import('../types').Expense, 'id'>) => {
-    return await addDoc(collection(db, 'expenses'), {
-        ...data,
-    });
+export const addExpense = async (restaurantId: string, data: Omit<import('../types').Expense, 'id'>) => {
+    return await addDoc(rCol(restaurantId, 'expenses'), { ...data });
 };
 
-export const deleteExpense = async (id: string) => {
-    return await deleteDoc(doc(db, 'expenses', id));
+export const deleteExpense = async (restaurantId: string, id: string) => {
+    return await deleteDoc(rDoc(restaurantId, 'expenses', id));
 };
 
 // ==========================================
-// STORE SETTINGS (for Public Menu sync)
+// STORE SETTINGS (per restaurant)
 // ==========================================
-export const saveStoreSettings = async (data: { name?: string; logo?: string;[key: string]: any }) => {
-    return await setDoc(doc(db, 'settings', 'store'), data, { merge: true });
+export const saveStoreSettings = async (restaurantId: string, data: { name?: string; logo?: string;[key: string]: any }) => {
+    return await setDoc(rDoc(restaurantId, 'settings', 'store'), data, { merge: true });
 };
 
-export const listenToStoreSettings = (callback: (data: any) => void) => {
-    return onSnapshot(doc(db, 'settings', 'store'), (snap) => {
+export const listenToStoreSettings = (restaurantId: string, callback: (data: any) => void) => {
+    return onSnapshot(rDoc(restaurantId, 'settings', 'store'), (snap) => {
         callback(snap.exists() ? snap.data() : {});
     });
 };
 
 // ==========================================
-// MULTI-TENANT: Restaurant-specific menu
-// Each restaurant has its own subcollections:
-//   /restaurants/{restaurantId}/categories
-//   /restaurants/{restaurantId}/products
+// USERS (per restaurant - for Settings)
 // ==========================================
-export const listenToRestaurantCategories = (restaurantId: string, callback: (data: Category[]) => void) => {
-    const q = query(collection(db, 'restaurants', restaurantId, 'categories'));
+export const listenToRestaurantUsers = (restaurantId: string, callback: (data: any[]) => void) => {
+    const q = query(rCol(restaurantId, 'users'));
     return onSnapshot(q, (snapshot) => {
-        const categories: Category[] = [];
-        snapshot.forEach((docSnap) => {
-            categories.push({ id: docSnap.id, ...docSnap.data() } as unknown as Category);
+        const users: any[] = [];
+        snapshot.forEach((doc) => {
+            users.push({ id: doc.id, ...doc.data() });
         });
-        callback(categories);
+        callback(users);
     });
 };
 
-export const listenToRestaurantProducts = (restaurantId: string, callback: (data: Product[]) => void) => {
-    const q = query(collection(db, 'restaurants', restaurantId, 'products'));
-    return onSnapshot(q, (snapshot) => {
-        const products: Product[] = [];
-        snapshot.forEach((docSnap) => {
-            products.push({ id: docSnap.id, ...docSnap.data() } as unknown as Product);
-        });
-        callback(products);
+export const addRestaurantUser = async (restaurantId: string, data: any) => {
+    return await addDoc(rCol(restaurantId, 'users'), {
+        ...data,
+        restaurantId,
+        created_at: new Date().toISOString(),
     });
 };
 
-export const addRestaurantCategory = async (restaurantId: string, data: any) => {
-    return await addDoc(collection(db, 'restaurants', restaurantId, 'categories'), {
+export const updateRestaurantUser = async (restaurantId: string, userId: string, data: any) => {
+    return await updateDoc(rDoc(restaurantId, 'users', userId), data);
+};
+
+export const deleteRestaurantUser = async (restaurantId: string, userId: string) => {
+    return await deleteDoc(rDoc(restaurantId, 'users', userId));
+};
+
+// ==========================================
+// MULTI-TENANT: Public menu helpers (kept for PublicMenu page)
+// ==========================================
+export const listenToRestaurantCategories = listenToCategories;
+export const listenToRestaurantProducts = listenToProducts;
+export const addRestaurantCategory = addCategory;
+export const addRestaurantProduct = addProduct;
+export const updateRestaurantProduct = updateProduct;
+export const deleteRestaurantProduct = deleteProduct;
+
+// ==========================================
+// RESTAURANTS (Super Admin only)
+// ==========================================
+export const listenToRestaurants = (callback: (data: any[]) => void) => {
+    const q = query(collection(db, 'restaurants'), orderBy('created_at', 'desc'));
+    return onSnapshot(q, (snapshot) => {
+        const restaurants: any[] = [];
+        snapshot.forEach((docSnap) => {
+            restaurants.push({ id: docSnap.id, ...docSnap.data() });
+        });
+        callback(restaurants);
+    });
+};
+
+export const addRestaurant = async (data: {
+    name: string;
+    logo?: string;
+    active: boolean;
+    theme: { primaryColor: string; secondaryColor: string };
+}) => {
+    return await addDoc(collection(db, 'restaurants'), {
         ...data,
         created_at: new Date().toISOString(),
     });
 };
 
-export const addRestaurantProduct = async (restaurantId: string, data: any) => {
-    return await addDoc(collection(db, 'restaurants', restaurantId, 'products'), {
-        ...data,
-        created_at: new Date().toISOString(),
-    });
+export const updateRestaurant = async (id: string, data: any) => {
+    return await updateDoc(doc(db, 'restaurants', id), data);
 };
 
-export const updateRestaurantProduct = async (restaurantId: string, productId: string, data: any) => {
-    return await updateDoc(doc(db, 'restaurants', restaurantId, 'products', productId), data);
-};
-
-export const deleteRestaurantProduct = async (restaurantId: string, productId: string) => {
-    return await deleteDoc(doc(db, 'restaurants', restaurantId, 'products', productId));
+export const deleteRestaurant = async (id: string) => {
+    return await deleteDoc(doc(db, 'restaurants', id));
 };

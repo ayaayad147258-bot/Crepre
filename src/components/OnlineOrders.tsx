@@ -1,25 +1,29 @@
 import React, { useState, useEffect } from 'react';
 import { ShoppingBag, CheckCircle, XCircle, Clock, MapPin, Phone, User, Calendar } from 'lucide-react';
-import { collection, query, where, onSnapshot, doc, updateDoc, orderBy } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 import { addOrder } from '../services/db';
 import { db } from '../lib/firebase';
 import { OnlineOrder } from '../types';
-import { cn } from '../utils';
+import { formatCurrency } from '../utils';
 import { sendWhatsAppBackgroundMessage } from '../utils/whatsapp';
 import toast from 'react-hot-toast';
+import { useRestaurantId, useRestaurantSettings } from '../context/RestaurantContext';
 
 interface OnlineOrdersProps {
     isRtl: boolean;
 }
 
 export const OnlineOrders: React.FC<OnlineOrdersProps> = ({ isRtl }) => {
+    const restaurantId = useRestaurantId();
+    const settings = useRestaurantSettings();
     const [orders, setOrders] = useState<OnlineOrder[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         // Listen to online orders that are pending confirmation
+        // Scoped to this restaurant's sub-collection
         const q = query(
-            collection(db, 'online_orders'),
+            collection(db, 'restaurants', restaurantId, 'online_orders'),
             where('status', '==', 'pending_online')
         );
 
@@ -45,7 +49,7 @@ export const OnlineOrders: React.FC<OnlineOrdersProps> = ({ isRtl }) => {
         });
 
         return () => unsubscribe();
-    }, [isRtl]);
+    }, [isRtl, restaurantId]);
 
     const handleAcceptOrder = async (orderId: string | number) => {
         try {
@@ -53,7 +57,7 @@ export const OnlineOrders: React.FC<OnlineOrdersProps> = ({ isRtl }) => {
 
             if (acceptedOrder) {
                 // Send to main POS/KDS pipeline so the kitchen sees it
-                await addOrder({
+                await addOrder(restaurantId, {
                     type: acceptedOrder.type || 'delivery',
                     items: acceptedOrder.items || [],
                     total_amount: acceptedOrder.total_amount || 0,
@@ -63,8 +67,8 @@ export const OnlineOrders: React.FC<OnlineOrdersProps> = ({ isRtl }) => {
                     delivery_fee: 0, // Online orders are assumed not to have a dynamic fee right now
                 });
 
-                // Update original document to remove it from this view
-                await updateDoc(doc(db, 'online_orders', orderId.toString()), {
+                // Update in restaurant sub-collection
+                await updateDoc(doc(db, 'restaurants', restaurantId, 'online_orders', orderId.toString()), {
                     status: 'accepted'
                 });
 
@@ -72,15 +76,19 @@ export const OnlineOrders: React.FC<OnlineOrdersProps> = ({ isRtl }) => {
                 if (acceptedOrder.customer) {
                     const customerPhone = acceptedOrder.customer.whatsapp || acceptedOrder.customer.phone;
                     if (customerPhone) {
-                        const template = localStorage.getItem('pos_wa_msg_online')
+                        const template = settings.wa_msg_online
                             || 'مرحباً {name}،\nتم تأكيد طلبك بنجاح وهو الآن قيد التجهيز في المطبخ! 👨‍🍳\nرقم الطلب: {order_id}';
                         const waMessage = template
                             .replace(/{name}/g, acceptedOrder.customer.name || '')
                             .replace(/{phone}/g, customerPhone)
                             .replace(/{order_id}/g, orderId.toString().slice(-4))
-                            .replace(/{total}/g, (acceptedOrder.total_amount || 0).toFixed(2));
+                            .replace(/{total}/g, formatCurrency(acceptedOrder.total_amount || 0, isRtl, settings.currency));
 
-                        sendWhatsAppBackgroundMessage(customerPhone, waMessage);
+                        sendWhatsAppBackgroundMessage(customerPhone, waMessage, {
+                            apiUrl: settings.whatsapp_api_url,
+                            apiToken: settings.whatsapp_api_token,
+                            isSimulated: settings.whatsapp_simulate
+                        });
                     }
                 }
             }
@@ -95,7 +103,7 @@ export const OnlineOrders: React.FC<OnlineOrdersProps> = ({ isRtl }) => {
     const handleRejectOrder = async (orderId: string | number) => {
         if (!confirm(isRtl ? 'هل تريد بالتأكيد رفض هذا الطلب؟' : 'Are you sure you want to reject this order?')) return;
         try {
-            await updateDoc(doc(db, 'online_orders', orderId.toString()), {
+            await updateDoc(doc(db, 'restaurants', restaurantId, 'online_orders', orderId.toString()), {
                 status: 'cancelled'
             });
             toast.success(isRtl ? 'تم رفض الطلب' : 'Order rejected');
@@ -203,7 +211,7 @@ export const OnlineOrders: React.FC<OnlineOrdersProps> = ({ isRtl }) => {
                                                     {item.selectedSize && <span className="text-xs text-slate-400">{item.selectedSize}</span>}
                                                 </div>
                                             </div>
-                                            <span className="font-bold text-slate-700">{(item.price * item.quantity).toFixed(2)}</span>
+                                            <span className="font-bold text-slate-700">{formatCurrency(item.price * item.quantity, isRtl, settings.currency)}</span>
                                         </li>
                                     ))}
                                 </ul>
@@ -213,7 +221,7 @@ export const OnlineOrders: React.FC<OnlineOrdersProps> = ({ isRtl }) => {
                             <div className="p-5 bg-slate-50 border-t border-slate-100">
                                 <div className="flex justify-between items-center mb-4">
                                     <span className="text-slate-500 font-bold">{isRtl ? 'المجموع' : 'Total'}</span>
-                                    <span className="text-2xl font-black text-brand-600">{order.total_amount?.toFixed(2)}</span>
+                                    <span className="text-2xl font-black text-brand-600">{formatCurrency(order.total_amount || 0, isRtl, settings.currency)}</span>
                                 </div>
 
                                 <div className="flex gap-3">

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Utensils } from 'lucide-react';
 import { cn, formatCurrency } from '../utils';
+import { useRestaurantSettings } from '../context/RestaurantContext';
 
 interface InvoiceProps {
     cart: any[];
@@ -31,11 +32,11 @@ export const Invoice: React.FC<InvoiceProps> = ({
     htmlId,
     customer
 }) => {
-    const branchName = localStorage.getItem('pos_branch_name') || 'الفرع الرئيسي';
-    const restaurantName = localStorage.getItem('pos_restaurant_name') || 'Dineify';
-    const restaurantLogo = localStorage.getItem('pos_restaurant_logo') || '';
-    const taxRateStr = localStorage.getItem('pos_tax_rate');
-    const taxRate = taxRateStr !== null ? Number(taxRateStr) : 15;
+    const settings = useRestaurantSettings();
+    const branchName = settings.branch || 'الفرع الرئيسي';
+    const restaurantName = settings.name || 'Dineify';
+    const restaurantLogo = settings.logo || '';
+    const taxRate = settings.tax_rate !== undefined ? Number(settings.tax_rate) : 15;
     const date = new Date().toLocaleString(isRtl ? 'ar-EG' : 'en-US');
 
     return (
@@ -115,7 +116,7 @@ export const Invoice: React.FC<InvoiceProps> = ({
                         <tr key={idx}>
                             <td className="py-1 text-xs truncate max-w-[40mm]">{item.name}</td>
                             <td className="text-center py-1 text-xs">{item.quantity}</td>
-                            <td className="text-end py-1 text-xs">{formatCurrency(item.price * item.quantity, isRtl)}</td>
+                            <td className="text-end py-1 text-xs">{formatCurrency(item.price * item.quantity, isRtl, settings.currency)}</td>
                         </tr>
                     ))}
                 </tbody>
@@ -126,23 +127,23 @@ export const Invoice: React.FC<InvoiceProps> = ({
             <div className="space-y-1 text-sm">
                 <div className="flex justify-between">
                     <span>{isRtl ? 'المجموع الفرعي:' : 'Subtotal:'}</span>
-                    <span>{formatCurrency(total, isRtl)}</span>
+                    <span>{formatCurrency(total, isRtl, settings.currency)}</span>
                 </div>
                 <div className="flex justify-between items-center bg-slate-50 p-1">
                     <span className="text-slate-500 font-bold">{isRtl ? `الضريبة (${taxRate}%)` : `Tax (${taxRate}%)`}</span>
-                    <span>{formatCurrency(tax, isRtl)}</span>
+                    <span>{formatCurrency(tax, isRtl, settings.currency)}</span>
                 </div>
 
                 {deliveryFee > 0 && (
                     <div className="flex justify-between items-center bg-slate-50 p-1">
                         <span className="text-slate-500 font-bold">{isRtl ? 'رسوم التوصيل' : 'Delivery Fee'}</span>
-                        <span>{formatCurrency(deliveryFee, isRtl)}</span>
+                        <span>{formatCurrency(deliveryFee, isRtl, settings.currency)}</span>
                     </div>
                 )}
 
                 <div className="flex justify-between items-center font-black text-lg pt-2 border-t-2 border-slate-200 mt-2">
                     <span>{isRtl ? 'الإجمالي:' : 'Total:'}</span>
-                    <span>{formatCurrency(grandTotal, isRtl)}</span>
+                    <span>{formatCurrency(grandTotal, isRtl, settings.currency)}</span>
                 </div>
             </div>
 

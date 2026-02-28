@@ -6,23 +6,27 @@ import { Clock, CheckCircle2, PlayCircle, Truck } from 'lucide-react';
 import { listenToOrders, updateOrderStatus, listenToDrivers, updateDriver, updateOrderAsDispacthed, updateOrderDriver } from '../services/db';
 import { Driver } from '../types';
 import { sendWhatsAppBackgroundMessage } from '../utils/whatsapp';
+import { useRestaurantId, useRestaurantSettings } from '../context/RestaurantContext';
+import { formatCurrency } from '../utils';
 
 interface KDSProps {
   isRtl: boolean;
 }
 
 export const KDS: React.FC<KDSProps> = ({ isRtl }) => {
+  const restaurantId = useRestaurantId();
+  const settings = useRestaurantSettings();
   const [orders, setOrders] = useState<Order[]>([]);
   const [availableDrivers, setAvailableDrivers] = useState<Driver[]>([]);
   const [allDrivers, setAllDrivers] = useState<Driver[]>([]);
   const [selectedDrivers, setSelectedDrivers] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    const unsubOrders = listenToOrders((data) => {
+    const unsubOrders = listenToOrders(restaurantId, (data) => {
       setOrders(data.filter((o: Order) => o.status !== 'served' && o.status !== 'cancelled'));
     });
 
-    const unsubDrivers = listenToDrivers((data) => {
+    const unsubDrivers = listenToDrivers(restaurantId, (data) => {
       setAllDrivers(data);
       setAvailableDrivers(data.filter(d => d.status === 'available'));
     });
@@ -31,11 +35,11 @@ export const KDS: React.FC<KDSProps> = ({ isRtl }) => {
       unsubOrders();
       unsubDrivers();
     };
-  }, []);
+  }, [restaurantId]);
 
   const updateStatus = async (id: string, status: OrderStatus, driver_id?: string) => {
     try {
-      await updateOrderStatus(id, status, driver_id);
+      await updateOrderStatus(restaurantId, id, status, driver_id);
     } catch (err) {
       console.error('Failed to update order status:', err);
     }
@@ -47,24 +51,28 @@ export const KDS: React.FC<KDSProps> = ({ isRtl }) => {
       // Find the order to get customer info before dispatching
       const order = orders.find(o => o.id === orderId);
 
-      await updateOrderAsDispacthed(orderId, driverId, 'served');
-      await updateDriver(driverId, { status: 'busy' });
+      await updateOrderAsDispacthed(restaurantId, orderId, driverId, 'served');
+      await updateDriver(restaurantId, driverId, { status: 'busy' });
 
       // Send WhatsApp notification to customer
       if (order?.customer) {
         const customerPhone = (order.customer as any).whatsapp || order.customer.phone;
         if (customerPhone) {
           const driverInfo = allDrivers.find(d => d.id === driverId);
-          const template = localStorage.getItem('pos_wa_msg_dispatch')
+          const template = settings.wa_msg_dispatch
             || 'مرحباً {name}،\nتم تجهيز طلبك وخرج مع الدليفري 🚚\nاسم الطيار: {driver}\nشكراً لاختيارك لنا! ❤️';
           const waMessage = template
             .replace(/{name}/g, order.customer.name || '')
             .replace(/{phone}/g, customerPhone)
             .replace(/{order_id}/g, orderId.slice(-4))
-            .replace(/{total}/g, (order.total_amount || 0).toFixed(2))
+            .replace(/{total}/g, formatCurrency(order.total_amount || 0, isRtl, settings.currency))
             .replace(/{driver}/g, driverInfo?.name || '');
 
-          sendWhatsAppBackgroundMessage(customerPhone, waMessage);
+          sendWhatsAppBackgroundMessage(customerPhone, waMessage, {
+            apiUrl: settings.whatsapp_api_url,
+            apiToken: settings.whatsapp_api_token,
+            isSimulated: settings.whatsapp_simulate
+          });
         }
       }
     } catch (error) {
@@ -128,7 +136,7 @@ export const KDS: React.FC<KDSProps> = ({ isRtl }) => {
                   </h3>
                   <div className="flex items-center gap-1 text-xs opacity-75">
                     <Clock size={12} />
-                    <span>{new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    <span>{new Date(order.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                   </div>
                 </div>
                 <div className="flex flex-col items-end gap-1">
@@ -192,7 +200,7 @@ export const KDS: React.FC<KDSProps> = ({ isRtl }) => {
                       onChange={(e) => {
                         if (order.driver_id) {
                           // Transfer to new driver
-                          updateOrderDriver(order.id.toString(), e.target.value);
+                          updateOrderDriver(restaurantId, order.id.toString(), e.target.value);
                         } else {
                           // Just select a driver before dispatching
                           setSelectedDrivers({ ...selectedDrivers, [order.id.toString()]: e.target.value });
@@ -212,7 +220,7 @@ export const KDS: React.FC<KDSProps> = ({ isRtl }) => {
                       onClick={() => {
                         const drvId = order.driver_id || selectedDrivers[order.id.toString()];
                         if (drvId) handleDispatchDelivery(order.id.toString(), drvId);
-                        else updateStatus(order.id.toString(), 'served', order.driver_id);
+                        else updateStatus(order.id.toString(), 'served', order.driver_id || undefined);
                       }}
                       className="w-full flex items-center justify-center gap-2 bg-slate-600 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-white py-3 rounded-xl font-bold transition-all"
                     >

@@ -4,12 +4,14 @@ import { cn, formatCurrency } from '../utils';
 import { listenToDrivers, addDriver, updateDriver, deleteDriver, listenToOrders, markOrderAsPaid, updateOrderDriver } from '../services/db';
 import { Driver, Order } from '../types';
 import toast from 'react-hot-toast';
+import { useRestaurantId } from '../context/RestaurantContext';
 
 interface DriversProps {
     isRtl: boolean;
 }
 
 export const Drivers: React.FC<DriversProps> = ({ isRtl }) => {
+    const restaurantId = useRestaurantId();
     const [drivers, setDrivers] = useState<Driver[]>([]);
     const [allOrders, setAllOrders] = useState<Order[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
@@ -27,14 +29,14 @@ export const Drivers: React.FC<DriversProps> = ({ isRtl }) => {
     });
 
     useEffect(() => {
-        const unsubDrivers = listenToDrivers(setDrivers);
-        const unsubOrders = listenToOrders(setAllOrders);
+        const unsubDrivers = listenToDrivers(restaurantId, setDrivers);
+        const unsubOrders = listenToOrders(restaurantId, setAllOrders);
 
         return () => {
             unsubDrivers();
             unsubOrders();
         };
-    }, []);
+    }, [restaurantId]);
 
     const handleOpenModal = (driver?: Driver) => {
         if (driver) {
@@ -65,10 +67,10 @@ export const Drivers: React.FC<DriversProps> = ({ isRtl }) => {
 
         try {
             if (editingDriver) {
-                await updateDriver(editingDriver.id, formData);
+                await updateDriver(restaurantId, editingDriver.id, formData);
                 toast.success(isRtl ? 'تم تحديث بيانات الطيار' : 'Driver updated');
             } else {
-                await addDriver({ ...formData, created_at: new Date().toISOString() });
+                await addDriver(restaurantId, { ...formData, created_at: new Date().toISOString() });
                 toast.success(isRtl ? 'تم إضافة الطيار بنجاح' : 'Driver added');
             }
             handleCloseModal();
@@ -81,7 +83,7 @@ export const Drivers: React.FC<DriversProps> = ({ isRtl }) => {
     const handleDelete = async (id: string) => {
         if (confirm(isRtl ? 'هل أنت متأكد من حذف هذا الطيار؟' : 'Are you sure you want to delete this driver?')) {
             try {
-                await deleteDriver(id);
+                await deleteDriver(restaurantId, id);
                 toast.success(isRtl ? 'تم الحذف بنجاح' : 'Deleted successfully');
             } catch (error) {
                 toast.error(isRtl ? 'حدث خطأ' : 'An error occurred');
@@ -112,7 +114,7 @@ export const Drivers: React.FC<DriversProps> = ({ isRtl }) => {
 
     const handleCollectCash = async (orderId: string) => {
         try {
-            await markOrderAsPaid(orderId);
+            await markOrderAsPaid(restaurantId, orderId);
             toast.success(isRtl ? 'تم تحصيل المبلغ بنجاح' : 'Cash collected successfully');
         } catch (error) {
             console.error('Failed to collect cash:', error);
@@ -123,7 +125,7 @@ export const Drivers: React.FC<DriversProps> = ({ isRtl }) => {
     const handleTransferDriver = async (orderId: string, newDriverId: string) => {
         if (!newDriverId) return;
         try {
-            await updateOrderDriver(orderId, newDriverId);
+            await updateOrderDriver(restaurantId, orderId, newDriverId);
             toast.success(isRtl ? 'تم نقل الطلب لطيار آخر' : 'Order transferred to another driver');
         } catch (error) {
             console.error('Failed to transfer driver:', error);
@@ -134,7 +136,7 @@ export const Drivers: React.FC<DriversProps> = ({ isRtl }) => {
     const handleToggleStatus = async (driver: Driver) => {
         try {
             const newStatus = driver.status === 'available' ? 'busy' : 'available';
-            await updateDriver(driver.id, { status: newStatus });
+            await updateDriver(restaurantId, driver.id, { status: newStatus });
             toast.success(isRtl ? 'تم تغيير حالة الطيار' : 'Driver status updated');
         } catch (error) {
             console.error('Failed to toggle status:', error);

@@ -4,6 +4,7 @@ import { listenToExpenses, addExpense, deleteExpense } from '../services/db';
 import { formatCurrency, cn } from '../utils';
 import { Expense, User } from '../types';
 import toast from 'react-hot-toast';
+import { useRestaurantId } from '../context/RestaurantContext';
 
 interface ExpensesProps {
     isRtl: boolean;
@@ -11,6 +12,7 @@ interface ExpensesProps {
 }
 
 export const Expenses: React.FC<ExpensesProps> = ({ isRtl, user }) => {
+    const restaurantId = useRestaurantId();
     const [expenses, setExpenses] = useState<Expense[]>([]);
     const [isAdding, setIsAdding] = useState(false);
     const [amount, setAmount] = useState('');
@@ -18,9 +20,9 @@ export const Expenses: React.FC<ExpensesProps> = ({ isRtl, user }) => {
     const [searchTerm, setSearchTerm] = useState('');
 
     useEffect(() => {
-        const unsub = listenToExpenses(setExpenses);
+        const unsub = listenToExpenses(restaurantId, setExpenses);
         return () => unsub();
-    }, []);
+    }, [restaurantId]);
 
     const handleAddExpense = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -30,7 +32,7 @@ export const Expenses: React.FC<ExpensesProps> = ({ isRtl, user }) => {
         }
 
         try {
-            await addExpense({
+            await addExpense(restaurantId, {
                 amount: parseFloat(amount),
                 reason,
                 date: new Date().toISOString(),
@@ -48,7 +50,7 @@ export const Expenses: React.FC<ExpensesProps> = ({ isRtl, user }) => {
     const handleDeleteExpense = async (id: string) => {
         if (window.confirm(isRtl ? 'هل أنت متأكد من حذف هذا المصروف؟' : 'Are you sure you want to delete this expense?')) {
             try {
-                await deleteExpense(id);
+                await deleteExpense(restaurantId, id);
                 toast.success(isRtl ? 'تم الحذف بنجاح' : 'Deleted successfully');
             } catch (error) {
                 console.error('Error deleting expense:', error);

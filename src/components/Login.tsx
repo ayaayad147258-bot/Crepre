@@ -21,8 +21,13 @@ export const Login: React.FC<LoginProps> = ({ isRtl, onLogin }) => {
         setError('');
 
         try {
+            // Multi-tenant login: search across all restaurants' users
+            // Each user doc has a `restaurantId` field so we know which restaurant they belong to
+            // We query the top-level `restaurants` collection, then search sub-collection users
+            // For simplicity + performance: we store restaurantId inside user docs and use collectionGroup query
+            const { collectionGroup } = await import('firebase/firestore');
             const q = query(
-                collection(db, 'users'),
+                collectionGroup(db, 'users'),
                 where('username', '==', username),
                 where('password', '==', password)
             );
@@ -30,7 +35,13 @@ export const Login: React.FC<LoginProps> = ({ isRtl, onLogin }) => {
 
             if (!querySnapshot.empty) {
                 const userDoc = querySnapshot.docs[0];
-                const user = { id: userDoc.id, ...userDoc.data() };
+                const userData = userDoc.data();
+                // restaurantId comes from the user's data field OR from the parent doc path
+                // Path: restaurants/{restaurantId}/users/{userId}
+                const pathSegments = userDoc.ref.path.split('/');
+                // pathSegments: ['restaurants', '{restaurantId}', 'users', '{userId}']
+                const restaurantId = userData.restaurantId || pathSegments[1];
+                const user = { id: userDoc.id, ...userData, restaurantId };
                 onLogin(user);
             } else {
                 setError(isRtl ? 'بيانات الدخول غير صحيحة' : 'Invalid credentials');
@@ -128,7 +139,7 @@ export const Login: React.FC<LoginProps> = ({ isRtl, onLogin }) => {
 
                     <div className="mt-8 pt-8 border-t border-slate-100 flex items-center justify-between text-sm font-bold text-slate-400">
                         <span>⚡ Powered by Smart Food</span>
-                        <span>v1.0.0</span>
+                        <span>v2.0.0</span>
                     </div>
                 </div>
             </div>

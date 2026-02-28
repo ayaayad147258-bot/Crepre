@@ -28,12 +28,14 @@ import { listenToOrders, listenToProducts, listenToInventory, listenToRecipes, l
 import { Expense } from '../types';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
+import { useRestaurantId } from '../context/RestaurantContext';
 
 interface ReportsProps {
   isRtl: boolean;
 }
 
 export const Reports: React.FC<ReportsProps> = ({ isRtl }) => {
+  const restaurantId = useRestaurantId();
   const [period, setPeriod] = useState('monthly');
   const [loading, setLoading] = useState(true);
 
@@ -45,11 +47,11 @@ export const Reports: React.FC<ReportsProps> = ({ isRtl }) => {
 
   useEffect(() => {
     setLoading(true);
-    let u1 = listenToOrders(setOrders);
-    let u2 = listenToProducts(setProducts);
-    let u3 = listenToInventory(setInventory);
-    let u4 = listenToRecipes(setRecipes);
-    let u5 = listenToExpenses(setExpenses);
+    let u1 = listenToOrders(restaurantId, setOrders);
+    let u2 = listenToProducts(restaurantId, setProducts);
+    let u3 = listenToInventory(restaurantId, setInventory);
+    let u4 = listenToRecipes(restaurantId, setRecipes);
+    let u5 = listenToExpenses(restaurantId, setExpenses);
 
     // Initial brief loading state
     setTimeout(() => setLoading(false), 600);
@@ -57,7 +59,7 @@ export const Reports: React.FC<ReportsProps> = ({ isRtl }) => {
     return () => {
       u1(); u2(); u3(); u4(); u5();
     };
-  }, []);
+  }, [restaurantId]);
 
   const { salesData, performanceData, inventoryUsage, summary } = useMemo(() => {
     if (!orders.length) return { salesData: [], performanceData: [], inventoryUsage: [], summary: { totalRevenue: 0, totalExpenses: 0, netProfit: 0 } };

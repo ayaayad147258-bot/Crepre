@@ -9,12 +9,14 @@ import { generateWhatsAppLink, getInvoiceMessage, sendWhatsAppBackgroundMessage 
 import { listenToCategories, listenToProducts, addOrder, addCustomer, listenToCustomers, listenToDrivers, updateDriver } from '../services/db';
 import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { useRestaurantId, useRestaurantSettings } from '../context/RestaurantContext';
 
 interface POSProps {
   isRtl: boolean;
 }
 
 export const POS: React.FC<POSProps> = ({ isRtl }) => {
+  const restaurantId = useRestaurantId();
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [activeCategory, setActiveCategory] = useState<number | string | null>(null);
@@ -43,7 +45,7 @@ export const POS: React.FC<POSProps> = ({ isRtl }) => {
   const [sizeModalProduct, setSizeModalProduct] = useState<Product | null>(null);
 
   useEffect(() => {
-    const unsubCategories = listenToCategories((data) => {
+    const unsubCategories = listenToCategories(restaurantId, (data) => {
       setCategories(data);
       setActiveCategory(current => {
         if (data.length > 0 && !current) return data[0].id;
@@ -51,9 +53,9 @@ export const POS: React.FC<POSProps> = ({ isRtl }) => {
       });
     });
 
-    const unsubProducts = listenToProducts(setProducts);
-    const unsubCustomers = listenToCustomers(setExistingCustomers);
-    const unsubDrivers = listenToDrivers((data) => {
+    const unsubProducts = listenToProducts(restaurantId, setProducts);
+    const unsubCustomers = listenToCustomers(restaurantId, setExistingCustomers);
+    const unsubDrivers = listenToDrivers(restaurantId, (data) => {
       // Only show drivers that are 'available' to grab new orders
       setAvailableDrivers(data.filter(d => d.status === 'available'));
     });
@@ -64,7 +66,7 @@ export const POS: React.FC<POSProps> = ({ isRtl }) => {
       unsubCustomers();
       unsubDrivers();
     };
-  }, []);
+  }, [restaurantId]);
 
   const addToCart = (product: Product, selectedSize?: 'mini' | 'medium' | 'large' | 'roll') => {
     if (product.sizes && !selectedSize) {
@@ -124,9 +126,9 @@ export const POS: React.FC<POSProps> = ({ isRtl }) => {
     }).filter(item => item.quantity > 0));
   };
 
+  const settings = useRestaurantSettings();
   const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-  const storedTaxRate = localStorage.getItem('pos_tax_rate');
-  const taxRate = storedTaxRate !== null ? Number(storedTaxRate) : 15;
+  const taxRate = settings.tax_rate !== undefined ? Number(settings.tax_rate) : 15;
   const tax = total * (taxRate / 100);
   const grandTotal = total + tax + (orderType === 'delivery' ? deliveryFee : 0);
 
@@ -153,7 +155,7 @@ export const POS: React.FC<POSProps> = ({ isRtl }) => {
           customerData = { id: existing.id, name: existing.name, phone: existing.phone, address: existing.address || customerAddress };
         } else {
           // Create new customer
-          const docRef = await addCustomer({
+          const docRef = await addCustomer(restaurantId, {
             name: customerName,
             phone: customerPhone,
             address: orderType === 'delivery' ? customerAddress : '',
@@ -192,12 +194,12 @@ export const POS: React.FC<POSProps> = ({ isRtl }) => {
         }
       }
 
-      const orderResult = await addOrder(payload);
+      const orderResult = await addOrder(restaurantId, payload);
       setPrintedOrderId(orderResult.daily_id);
 
       // Update the selected driver status to busy
       if (orderType === 'delivery' && selectedDriverId) {
-        await updateDriver(selectedDriverId, { status: 'busy' });
+        await updateDriver(restaurantId, selectedDriverId, { status: 'busy' });
       }
 
       // Auto-print the invoice
@@ -206,8 +208,8 @@ export const POS: React.FC<POSProps> = ({ isRtl }) => {
 
         // If delivery, open WhatsApp automatically
         if (orderType === 'delivery' && customerData) {
-          const template = localStorage.getItem('pos_wa_msg_delivery')
-            || 'مرحباً {name}،\nشكراً لطلبك من مطعمنا!\nالإجمالي: {total}\nنتمنى لك وجبة شهية 🍔';
+          const template = settings.wa_msg_delivery
+            || 'مرحباً {name}،\nتم تأكيد طلبك بنجاح وهو الآن قيد التجهيز! 👨‍🍳\nرقم الطلب: {order_id}\nالإجمالي: {total}\nنتمنى لك وجبة شهية 🍔';
           const waMessage = template
             .replace(/{name}/g, customerData.name || '')
             .replace(/{phone}/g, customerData.phone || '')
@@ -215,7 +217,11 @@ export const POS: React.FC<POSProps> = ({ isRtl }) => {
             .replace(/{total}/g, grandTotal.toFixed(2));
 
           // Send background WhatsApp confirmation instead of opening the app
-          sendWhatsAppBackgroundMessage(customerData.whatsapp || customerData.phone, waMessage);
+          sendWhatsAppBackgroundMessage(customerData.whatsapp || customerData.phone, waMessage, {
+            apiUrl: settings.whatsapp_api_url,
+            apiToken: settings.whatsapp_api_token,
+            isSimulated: settings.whatsapp_simulate
+          });
         }
       }, 100);
 
@@ -239,7 +245,7 @@ export const POS: React.FC<POSProps> = ({ isRtl }) => {
 
   const handleReorder = async (orderId: string) => {
     try {
-      const docRef = doc(db, 'orders', orderId);
+      const docRef = doc(db, 'restaurants', restaurantId, 'orders', orderId);
       const docSnap = await getDoc(docRef);
 
       if (docSnap.exists()) {
@@ -550,7 +556,7 @@ export const POS: React.FC<POSProps> = ({ isRtl }) => {
                 >
                   <div className="flex-1 pr-4">
                     <h4 className="font-bold text-slate-800 text-sm group-hover:text-brand-600 transition-colors">{item.name}</h4>
-                    <p className="text-xs font-black text-slate-400 mt-1">{formatCurrency(item.price, isRtl)}</p>
+                    <p className="text-xs font-black text-slate-400 mt-1">{formatCurrency(item.price, isRtl, settings.currency)}</p>
                   </div>
                   <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
                     <button
@@ -577,17 +583,17 @@ export const POS: React.FC<POSProps> = ({ isRtl }) => {
           <div className="space-y-2">
             <div className="flex justify-between text-slate-500 text-sm font-medium">
               <span>{isRtl ? 'المجموع الفرعي' : 'Subtotal'}</span>
-              <span className="font-mono">{formatCurrency(total, isRtl)}</span>
+              <span className="font-mono">{formatCurrency(total, isRtl, settings.currency)}</span>
             </div>
             <div className="flex justify-between text-slate-500 text-sm font-medium">
               <span>{isRtl ? `الضريبة (${taxRate}%)` : `Tax (${taxRate}%)`}</span>
-              <span className="font-mono">{formatCurrency(tax, isRtl)}</span>
+              <span className="font-mono">{formatCurrency(tax, isRtl, settings.currency)}</span>
             </div>
 
             {orderType === 'delivery' && deliveryFee > 0 && (
               <div className="flex justify-between items-center text-sm font-bold text-slate-500 pb-2">
                 <span>{isRtl ? 'رسوم التوصيل' : 'Delivery Fee'}</span>
-                <span>{formatCurrency(deliveryFee, isRtl)}</span>
+                <span>{formatCurrency(deliveryFee, isRtl, settings.currency)}</span>
               </div>
             )}
 
@@ -695,7 +701,7 @@ export const POS: React.FC<POSProps> = ({ isRtl }) => {
                     className="w-full flex justify-between items-center p-4 rounded-xl border-2 border-slate-100 hover:border-brand-500 hover:bg-brand-50 transition-all group"
                   >
                     <span className="font-bold text-slate-700 group-hover:text-brand-700">{isRtl ? 'صغير (Mini)' : 'Mini'}</span>
-                    <span className="font-black text-brand-600">{formatCurrency(sizeModalProduct.sizes.mini, isRtl)}</span>
+                    <span className="font-black text-brand-600">{formatCurrency(sizeModalProduct.sizes.mini, isRtl, settings.currency)}</span>
                   </button>
                 )}
                 {sizeModalProduct.sizes?.medium && (
@@ -704,7 +710,7 @@ export const POS: React.FC<POSProps> = ({ isRtl }) => {
                     className="w-full flex justify-between items-center p-4 rounded-xl border-2 border-slate-100 hover:border-brand-500 hover:bg-brand-50 transition-all group"
                   >
                     <span className="font-bold text-slate-700 group-hover:text-brand-700">{isRtl ? 'وسط (Medium)' : 'Medium'}</span>
-                    <span className="font-black text-brand-600">{formatCurrency(sizeModalProduct.sizes.medium, isRtl)}</span>
+                    <span className="font-black text-brand-600">{formatCurrency(sizeModalProduct.sizes.medium, isRtl, settings.currency)}</span>
                   </button>
                 )}
                 {sizeModalProduct.sizes?.large && (
@@ -713,7 +719,7 @@ export const POS: React.FC<POSProps> = ({ isRtl }) => {
                     className="w-full flex justify-between items-center p-4 rounded-xl border-2 border-slate-100 hover:border-brand-500 hover:bg-brand-50 transition-all group"
                   >
                     <span className="font-bold text-slate-700 group-hover:text-brand-700">{isRtl ? 'كبير (Large)' : 'Large'}</span>
-                    <span className="font-black text-brand-600">{formatCurrency(sizeModalProduct.sizes.large, isRtl)}</span>
+                    <span className="font-black text-brand-600">{formatCurrency(sizeModalProduct.sizes.large, isRtl, settings.currency)}</span>
                   </button>
                 )}
                 {sizeModalProduct.sizes?.roll && (
@@ -722,7 +728,7 @@ export const POS: React.FC<POSProps> = ({ isRtl }) => {
                     className="w-full flex justify-between items-center p-4 rounded-xl border-2 border-slate-100 hover:border-brand-500 hover:bg-brand-50 transition-all group"
                   >
                     <span className="font-bold text-slate-700 group-hover:text-brand-700">{isRtl ? 'رول (Roll)' : 'Roll'}</span>
-                    <span className="font-black text-brand-600">{formatCurrency(sizeModalProduct.sizes.roll, isRtl)}</span>
+                    <span className="font-black text-brand-600">{formatCurrency(sizeModalProduct.sizes.roll, isRtl, settings.currency)}</span>
                   </button>
                 )}
               </div>

@@ -1,9 +1,4 @@
-import { type ClassValue, clsx } from 'clsx';
-import { twMerge } from 'tailwind-merge';
-
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
+// Types for the restaurant management system
 
 export type OrderStatus = 'pending' | 'preparing' | 'ready' | 'served' | 'paid' | 'cancelled';
 
@@ -75,6 +70,7 @@ export interface User {
   username: string;
   role: string;
   permissions?: string[];
+  restaurantId: string; // Multi-tenant: which restaurant this user belongs to
 }
 
 export interface Customer {

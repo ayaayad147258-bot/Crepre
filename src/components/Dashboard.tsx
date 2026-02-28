@@ -16,16 +16,18 @@ import {
 import { TrendingUp, Users, ShoppingBag, DollarSign } from 'lucide-react';
 import { formatCurrency } from '../utils';
 import { listenToOrders } from '../services/db';
+import { useRestaurantId } from '../context/RestaurantContext';
 
 interface DashboardProps {
   isRtl: boolean;
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({ isRtl }) => {
+  const restaurantId = useRestaurantId();
   const [stats, setStats] = useState<any>(null);
 
   useEffect(() => {
-    const unsub = listenToOrders((orders) => {
+    const unsub = listenToOrders(restaurantId, (orders) => {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
@@ -79,7 +81,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ isRtl }) => {
     });
 
     return () => unsub();
-  }, [isRtl]);
+  }, [isRtl, restaurantId]);
 
   if (!stats) return <div className="p-8">Loading...</div>;
 

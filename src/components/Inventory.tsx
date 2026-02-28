@@ -26,7 +26,6 @@ import {
   addRecipe,
   deleteRecipe,
   deleteCategory,
-  deleteProduct,
   deleteProductsByCategory,
   deleteProductsBatch
 } from '../services/db';
@@ -35,6 +34,7 @@ import { collection, query, getDocs, doc, updateDoc, writeBatch, where } from 'f
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { Product, Category } from '../types';
 import toast from 'react-hot-toast';
+import { useRestaurantId, useRestaurantSettings } from '../context/RestaurantContext';
 
 interface Ingredient {
   id: string;
@@ -48,6 +48,7 @@ interface Ingredient {
 interface ProductCost {
   id: string;
   name: string;
+  name_ar?: string;
   price: number;
   food_cost: number;
 }
@@ -62,41 +63,46 @@ interface ProductCostCardProps {
   onUpdate: (id: string, cost: number) => void;
 }
 
-const ProductCostCard: React.FC<ProductCostCardProps> = ({ product, isRtl, onUpdate }) => {
-  const [localCostStr, setLocalCostStr] = useState(product.food_cost.toString() || '0');
+const ProductCostCard = ({ product, isRtl, onUpdate, currency }: { product: ProductCost, isRtl: boolean, onUpdate: (id: string, cost: number) => void, currency?: string }) => {
+  const [localCostStr, setLocalCostStr] = useState((product.food_cost || 0).toString());
 
   useEffect(() => {
-    setLocalCostStr(product.food_cost.toString() || '0');
+    setLocalCostStr((product.food_cost || 0).toString());
   }, [product.food_cost]);
 
   const activeCost = parseFloat(localCostStr) || 0;
-  const margin = product.price > 0 ? ((product.price - activeCost) / product.price) * 100 : 0;
+  const productPrice = product.price || 0;
+  const margin = productPrice > 0 ? ((productPrice - activeCost) / productPrice) * 100 : 0;
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100"
+      className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 space-y-4"
     >
-      <div className="flex justify-between items-start mb-4">
-        <h3 className="font-bold text-lg text-slate-800">{product.name}</h3>
-        <span className={cn(
-          "px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider",
-          margin > 70 ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+      <div className="flex justify-between items-start">
+        <div className="flex-1">
+          <h4 className="font-bold text-slate-800 text-lg">{isRtl ? product.name_ar || product.name : product.name}</h4>
+          <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">{product.id}</p>
+        </div>
+        <div className={cn(
+          "px-3 py-1 rounded-full text-xs font-bold",
+          margin > 30 ? "bg-emerald-50 text-emerald-600" : margin > 15 ? "bg-amber-50 text-amber-600" : "bg-red-50 text-red-600"
         )}>
-          {margin.toFixed(0)}% Margin
-        </span>
+          {isNaN(margin) ? 0 : margin.toFixed(0)}% Margin
+        </div>
       </div>
 
-      <div className="space-y-4">
+      <div className="pt-4 border-t border-slate-100 space-y-3">
         <div className="flex justify-between items-center">
-          <span className="text-slate-500 text-sm">{isRtl ? 'سعر البيع' : 'Selling Price'}</span>
-          <span className="font-bold text-slate-800">{formatCurrency(product.price, isRtl)}</span>
+          <span className="text-slate-500 text-sm font-medium">{isRtl ? 'سعر البيع' : 'Selling Price'}</span>
+          <span className="font-bold text-brand-600">{formatCurrency(productPrice, isRtl, currency)}</span>
         </div>
+
         <div className="flex justify-between items-center">
-          <span className="text-slate-500 text-sm">{isRtl ? 'تكلفة الطعام' : 'Food Cost'}</span>
+          <span className="text-slate-500 text-sm font-medium">{isRtl ? 'تكلفة الطعام' : 'Food Cost'}</span>
           <div className="flex items-center gap-2">
-            <span className="text-slate-400 text-xs">{isRtl ? 'ج.م' : 'EGP'}</span>
+            <span className="text-slate-400 text-xs">{currency === 'EGP' ? (isRtl ? 'ج.م' : 'EGP') : currency}</span>
             <input
               type="number" step="0.01"
               value={localCostStr}
@@ -112,20 +118,16 @@ const ProductCostCard: React.FC<ProductCostCardProps> = ({ product, isRtl, onUpd
           </div>
         </div>
 
-        <div className="pt-4 border-t border-slate-100">
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-slate-500 text-sm font-medium">{isRtl ? 'الربح لكل وحدة' : 'Profit per unit'}</span>
-            <span className="font-bold text-emerald-600">{formatCurrency(product.price - activeCost, isRtl)}</span>
-          </div>
-          <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-            <div
-              className="bg-brand-500 h-full"
-              style={{ width: `${product.price > 0 ? (activeCost / product.price) * 100 : 0}%` }}
-            />
-          </div>
-          <p className="text-[10px] text-slate-400 mt-1">
-            {isRtl ? 'نسبة التكلفة:' : 'Cost Ratio:'} {product.price > 0 ? ((activeCost / product.price) * 100).toFixed(1) : 0}%
-          </p>
+        <div className="flex justify-between items-center pt-2 border-t border-slate-50">
+          <span className="text-slate-500 text-sm font-medium">{isRtl ? 'هامش الربح' : 'Profit Margin'}</span>
+          <span className="font-bold text-emerald-600">{formatCurrency(productPrice - activeCost, isRtl, currency)}</span>
+        </div>
+
+        <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+          <div
+            className={cn("h-full transition-all duration-1000", margin > 30 ? "bg-emerald-500" : margin > 15 ? "bg-amber-500" : "bg-red-500")}
+            style={{ width: `${Math.min(100, Math.max(0, margin))}%` }}
+          />
         </div>
       </div>
     </motion.div>
@@ -133,6 +135,8 @@ const ProductCostCard: React.FC<ProductCostCardProps> = ({ product, isRtl, onUpd
 };
 
 export const Inventory: React.FC<InventoryProps> = ({ isRtl }) => {
+  const restaurantId = useRestaurantId();
+  const settings = useRestaurantSettings();
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [productCosts, setProductCosts] = useState<ProductCost[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -157,6 +161,7 @@ export const Inventory: React.FC<InventoryProps> = ({ isRtl }) => {
   const [newProdImage, setNewProdImage] = useState('');
   const [newProdImageFile, setNewProdImageFile] = useState<File | null>(null);
   const [newProdCatId, setNewProdCatId] = useState('');
+  const [newProdActive, setNewProdActive] = useState(true);
 
   // Sizes state
   const [newProdHasSizes, setNewProdHasSizes] = useState(false);
@@ -178,6 +183,7 @@ export const Inventory: React.FC<InventoryProps> = ({ isRtl }) => {
   const [editProdImage, setEditProdImage] = useState('');
   const [editProdImageFile, setEditProdImageFile] = useState<File | null>(null);
   const [editProdCatId, setEditProdCatId] = useState('');
+  const [editProdActive, setEditProdActive] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
 
   const [editProdHasSizes, setEditProdHasSizes] = useState(false);
@@ -190,10 +196,10 @@ export const Inventory: React.FC<InventoryProps> = ({ isRtl }) => {
   useEffect(() => {
     setLoading(true);
 
-    const unsubCategories = listenToCategories(setCategories);
-    const unsubProducts = listenToProducts(setProducts);
-    const unsubInventory = listenToInventory(setIngredients);
-    const unsubRecipes = listenToRecipes(setRecipes);
+    const unsubCategories = listenToCategories(restaurantId, setCategories);
+    const unsubProducts = listenToProducts(restaurantId, setProducts);
+    const unsubInventory = listenToInventory(restaurantId, setIngredients);
+    const unsubRecipes = listenToRecipes(restaurantId, setRecipes);
 
     // Initial load for complex derived views (like product costs) could be handled differently,
     // but we can compute costs directly from products and recipes now.
@@ -205,7 +211,7 @@ export const Inventory: React.FC<InventoryProps> = ({ isRtl }) => {
       unsubInventory();
       unsubRecipes();
     };
-  }, []);
+  }, [restaurantId]);
 
   // Compute product costs locally instead of relying on a dedicated API
   useEffect(() => {
@@ -224,7 +230,8 @@ export const Inventory: React.FC<InventoryProps> = ({ isRtl }) => {
 
         return {
           id: product.id,
-          name: isRtl ? product.name_ar : product.name,
+          name: product.name,
+          name_ar: product.name_ar,
           price: product.price,
           food_cost: food_cost
         } as ProductCost;
@@ -235,7 +242,7 @@ export const Inventory: React.FC<InventoryProps> = ({ isRtl }) => {
 
   const handleUpdateIngredient = async (id: number | string, updates: Partial<Ingredient>) => {
     try {
-      await updateInventoryItem(id.toString(), updates);
+      await updateInventoryItem(restaurantId, id.toString(), updates);
       toast.success(isRtl ? 'تم تحديث المكون' : 'Ingredient updated', { id: 'ing-update' });
     } catch (error) {
       console.error('Failed to update ingredient:', error);
@@ -245,7 +252,7 @@ export const Inventory: React.FC<InventoryProps> = ({ isRtl }) => {
 
   const handleUpdateProductCost = async (id: number | string, food_cost: number) => {
     try {
-      await updateProduct(id.toString(), { food_cost });
+      await updateProduct(restaurantId, id.toString(), { food_cost });
       toast.success(isRtl ? 'تم تحديث التكلفة' : 'Cost updated', { id: 'cost-update' });
     } catch (error) {
       console.error('Failed to update product cost:', error);
@@ -255,11 +262,11 @@ export const Inventory: React.FC<InventoryProps> = ({ isRtl }) => {
   const handleDeleteIngredient = async (id: number | string) => {
     if (!window.confirm(isRtl ? 'هل أنت متأكد من حذف هذا المكون؟ سيتم حذفه أيضاً من جميع الوصفات المرتبطة به.' : 'Are you sure you want to delete this ingredient? It will also be removed from any linked recipes.')) return;
     try {
-      await deleteInventoryItem(id.toString());
+      await deleteInventoryItem(restaurantId, id.toString());
 
-      // Cleanup associated recipes
+      // Cleanup associated recipes (now scoped to restaurant)
       const batch = writeBatch(db);
-      const q = query(collection(db, 'recipes'), where('ingredient_id', '==', id.toString()));
+      const q = query(collection(db, 'restaurants', restaurantId, 'recipes'), where('ingredient_id', '==', id.toString()));
       const snap = await getDocs(q);
       snap.forEach(d => batch.delete(d.ref));
       await batch.commit();
@@ -274,7 +281,7 @@ export const Inventory: React.FC<InventoryProps> = ({ isRtl }) => {
     e.preventDefault();
     if (!newCatNameEn || !newCatNameAr) return;
     try {
-      await addCategory({ name: newCatNameEn, name_ar: newCatNameAr });
+      await addCategory(restaurantId, { name: newCatNameEn, name_ar: newCatNameAr });
       setNewCatNameEn('');
       setNewCatNameAr('');
       toast.success(isRtl ? 'تم إضافة القسم بنجاح' : 'Category added successfully');
@@ -305,14 +312,14 @@ export const Inventory: React.FC<InventoryProps> = ({ isRtl }) => {
         roll: parseFloat(newProdSizes.roll) || null,
       } : null;
 
-      const prodRef = await addProduct({
+      const prodRef = await addProduct(restaurantId, {
         category_id: newProdCatId,
         name: newProdNameEn,
         name_ar: newProdNameAr,
         price: newProdHasSizes ? 0 : parseFloat(newProdPrice),
         food_cost: parseFloat(newProdFoodCost || "0"),
         image: imageUrl,
-        active: true,
+        active: newProdActive,
         sizes: sizesObj
       });
 
@@ -320,7 +327,7 @@ export const Inventory: React.FC<InventoryProps> = ({ isRtl }) => {
       if (newProdRecipes.length > 0) {
         const batch = writeBatch(db);
         for (const r of newProdRecipes) {
-          const rRef = doc(collection(db, 'recipes'));
+          const rRef = doc(collection(db, 'restaurants', restaurantId, 'recipes'));
           batch.set(rRef, {
             product_id: prodRef.id,
             ingredient_id: r.ingredient_id,
@@ -332,6 +339,7 @@ export const Inventory: React.FC<InventoryProps> = ({ isRtl }) => {
 
       setNewProdNameEn('');
       setNewProdNameAr('');
+      setNewProdActive(true);
       setNewProdPrice('');
       setNewProdFoodCost('');
       setNewProdImage('');
@@ -352,7 +360,7 @@ export const Inventory: React.FC<InventoryProps> = ({ isRtl }) => {
     e.preventDefault();
     if (!newIngName) return;
     try {
-      await addInventoryItem({
+      await addInventoryItem(restaurantId, {
         name: newIngName,
         unit: newIngUnit,
         stock_level: 0,
@@ -380,6 +388,7 @@ export const Inventory: React.FC<InventoryProps> = ({ isRtl }) => {
     setEditProdImage(product.image || '');
     setEditProdImageFile(null);
     setEditProdCatId(product.category_id.toString());
+    setEditProdActive(product.active !== false);
 
     setEditProdHasSizes(!!product.sizes);
     setEditProdSizes({
@@ -415,7 +424,7 @@ export const Inventory: React.FC<InventoryProps> = ({ isRtl }) => {
         roll: parseFloat(editProdSizes.roll) || null,
       } : null; // use null to clear it if switching back
 
-      await updateProduct(editingProduct.id.toString(), {
+      await updateProduct(restaurantId, editingProduct.id.toString(), {
         category_id: editProdCatId,
         name: editProdNameEn,
         name_ar: editProdNameAr,
@@ -427,12 +436,12 @@ export const Inventory: React.FC<InventoryProps> = ({ isRtl }) => {
 
       // Update recipes: Delete all old ones for this product, then batch write new ones
       const batch = writeBatch(db);
-      const q = query(collection(db, 'recipes'), where('product_id', '==', editingProduct.id.toString()));
+      const q = query(collection(db, 'restaurants', restaurantId, 'recipes'), where('product_id', '==', editingProduct.id.toString()));
       const snap = await getDocs(q);
       snap.forEach(d => batch.delete(d.ref));
 
       for (const r of editProdRecipes) {
-        const rRef = doc(collection(db, 'recipes'));
+        const rRef = doc(collection(db, 'restaurants', restaurantId, 'recipes'));
         batch.set(rRef, {
           product_id: editingProduct.id.toString(),
           ingredient_id: r.ingredient_id,
@@ -458,8 +467,8 @@ export const Inventory: React.FC<InventoryProps> = ({ isRtl }) => {
     }
     try {
       setBulkActionLoading(true);
-      await deleteCategory(catId);
-      await deleteProductsByCategory(catId);
+      await deleteCategory(restaurantId, catId);
+      await deleteProductsByCategory(restaurantId, catId);
       toast.success(isRtl ? 'تم حذف القسم بنجاح' : 'Category deleted successfully');
     } catch (err) {
       console.error(err);
@@ -485,7 +494,7 @@ export const Inventory: React.FC<InventoryProps> = ({ isRtl }) => {
 
     try {
       setBulkActionLoading(true);
-      await deleteProductsBatch(selectedProducts);
+      await deleteProductsBatch(restaurantId, selectedProducts);
       setSelectedProducts([]);
       toast.success(isRtl ? 'تم الحذف بنجاح' : 'Deleted successfully');
     } catch (err) {
@@ -511,13 +520,13 @@ export const Inventory: React.FC<InventoryProps> = ({ isRtl }) => {
         // Delete all products
         const maxBatchSize = 500;
         for (let i = 0; i < allProductIds.length; i += maxBatchSize) {
-          await deleteProductsBatch(allProductIds.slice(i, i + maxBatchSize));
+          await deleteProductsBatch(restaurantId, allProductIds.slice(i, i + maxBatchSize));
         }
       }
 
       // Delete all categories directly one by one
       for (const cat of categories) {
-        await deleteCategory(cat.id.toString());
+        await deleteCategory(restaurantId, cat.id.toString());
       }
 
       setSelectedProducts([]);
@@ -558,11 +567,11 @@ export const Inventory: React.FC<InventoryProps> = ({ isRtl }) => {
       if (productsToDelete.length > 0) {
         const maxBatchSize = 500;
         for (let i = 0; i < productsToDelete.length; i += maxBatchSize) {
-          await deleteProductsBatch(productsToDelete.slice(i, i + maxBatchSize));
+          await deleteProductsBatch(restaurantId, productsToDelete.slice(i, i + maxBatchSize));
         }
       }
       for (const catId of categoriesToDelete) {
-        await deleteCategory(catId);
+        await deleteCategory(restaurantId, catId);
       }
       setSelectedProducts([]);
       toast.success(isRtl ? 'تم الحذف بنجاح' : 'Deleted successfully');
@@ -583,6 +592,14 @@ export const Inventory: React.FC<InventoryProps> = ({ isRtl }) => {
     p.name.toLowerCase().includes(menuSearchQuery.toLowerCase()) ||
     (p.name_ar && p.name_ar.includes(menuSearchQuery))
   );
+
+  if (loading) {
+    return (
+      <div className="flex-1 flex items-center justify-center p-20">
+        <div className="w-12 h-12 border-4 border-brand-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="p-8 bg-slate-50 h-full overflow-y-auto">
@@ -835,6 +852,7 @@ export const Inventory: React.FC<InventoryProps> = ({ isRtl }) => {
               product={product}
               isRtl={isRtl}
               onUpdate={handleUpdateProductCost}
+              currency={settings.currency}
             />
           ))}
         </div>
@@ -1008,6 +1026,19 @@ export const Inventory: React.FC<InventoryProps> = ({ isRtl }) => {
                       className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500/20"
                     />
                   </div>
+                </div>
+
+                <div className="flex items-center gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                  <input
+                    type="checkbox"
+                    id="new-prod-active"
+                    checked={newProdActive}
+                    onChange={(e) => setNewProdActive(e.target.checked)}
+                    className="w-5 h-5 rounded text-brand-600 focus:ring-brand-500"
+                  />
+                  <label htmlFor="new-prod-active" className="font-bold text-slate-700 cursor-pointer">
+                    {isRtl ? 'عرض في المنيو الإلكتروني؟' : 'Show in Online Menu?'}
+                  </label>
                 </div>
 
                 <div className="border-t border-slate-100 pt-4 mt-4">
@@ -1184,6 +1215,19 @@ export const Inventory: React.FC<InventoryProps> = ({ isRtl }) => {
                           <input required type="text" value={editProdNameAr} onChange={e => setEditProdNameAr(e.target.value)} className="w-full px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20" placeholder={isRtl ? 'الاسم (عربي)' : "Name (AR)"} />
                         </div>
 
+                        <div className="flex items-center gap-3 bg-white p-4 rounded-xl border border-slate-200">
+                          <input
+                            type="checkbox"
+                            id="edit-prod-active"
+                            checked={editProdActive}
+                            onChange={(e) => setEditProdActive(e.target.checked)}
+                            className="w-5 h-5 rounded text-brand-600 focus:ring-brand-500"
+                          />
+                          <label htmlFor="edit-prod-active" className="font-bold text-slate-700 cursor-pointer">
+                            {isRtl ? 'عرض في المنيو الإلكتروني؟' : 'Show in Online Menu?'}
+                          </label>
+                        </div>
+
                         <div className="border border-slate-200 rounded-xl p-4 bg-white">
                           <div className="flex justify-between items-center mb-4">
                             <h4 className="font-bold text-slate-700 text-sm">{isRtl ? 'مكونات الوصفة' : 'Recipe Ingredients'}</h4>
@@ -1325,9 +1369,16 @@ export const Inventory: React.FC<InventoryProps> = ({ isRtl }) => {
                     </div>
                     <img src={product.image || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&h=400&fit=crop"} alt={product.name} className="w-16 h-16 rounded-lg object-cover bg-slate-100 shrink-0" />
                     <div className="flex-1 min-w-0 pr-6">
-                      <p className="text-xs font-bold text-brand-600 uppercase mb-1">{isRtl ? category?.name_ar : category?.name}</p>
+                      <div className="flex items-center gap-2 mb-1">
+                        <p className="text-xs font-bold text-brand-600 uppercase">{isRtl ? category?.name_ar : category?.name}</p>
+                        {product.active === false && (
+                          <span className="bg-red-100 text-red-600 text-[9px] px-1.5 py-0.5 rounded font-bold uppercase">
+                            {isRtl ? 'مخفي' : 'Hidden'}
+                          </span>
+                        )}
+                      </div>
                       <h4 className="font-bold text-slate-800 truncate text-sm">{isRtl ? product.name_ar : product.name}</h4>
-                      <p className="text-slate-500 font-mono mt-1 text-sm">{formatCurrency(product.price, isRtl)}</p>
+                      <p className="text-slate-500 font-mono mt-1 text-sm">{formatCurrency(product.price, isRtl, settings.currency)}</p>
                     </div>
                     <button onClick={() => handleEditProductClick(product)} className="opacity-0 group-hover:opacity-100 p-2 text-brand-600 bg-brand-50 hover:bg-brand-100 rounded-lg transition-all text-xs font-bold shrink-0">
                       {isRtl ? 'تعديل' : 'Edit'}

@@ -20,11 +20,17 @@ export const generateWhatsAppLink = (phone: string, message: string) => {
     return `https://wa.me/${formattedPhone}?text=${encodedMessage}`;
 };
 
-export const sendWhatsAppBackgroundMessage = async (phone: string, message: string): Promise<boolean> => {
+export const sendWhatsAppBackgroundMessage = async (
+    phone: string,
+    message: string,
+    settingsOverride?: { apiUrl?: string; apiToken?: string; isSimulated?: boolean }
+): Promise<boolean> => {
     const formattedPhone = formatWhatsAppNumber(phone);
-    const apiUrl = localStorage.getItem('pos_whatsapp_api_url') || '';
-    const apiToken = localStorage.getItem('pos_whatsapp_api_token') || '';
-    const isSimulated = localStorage.getItem('pos_whatsapp_simulate') !== 'false'; // Default to true if not set
+    const apiUrl = settingsOverride?.apiUrl || localStorage.getItem('pos_whatsapp_api_url') || '';
+    const apiToken = settingsOverride?.apiToken || localStorage.getItem('pos_whatsapp_api_token') || '';
+    const isSimulated = settingsOverride?.isSimulated !== undefined
+        ? settingsOverride.isSimulated
+        : localStorage.getItem('pos_whatsapp_simulate') !== 'false';
 
     console.log('📱 WhatsApp Config:', { apiUrl: apiUrl ? '✅ Set' : '❌ Empty', apiToken: apiToken ? '✅ Set' : '❌ Empty', isSimulated, phone: formattedPhone });
 
@@ -38,9 +44,7 @@ export const sendWhatsAppBackgroundMessage = async (phone: string, message: stri
         const isUltraMsg = apiUrl.toLowerCase().includes('ultramsg');
 
         if (isUltraMsg) {
-            // UltraMsg /messages/chat requires POST with form data
-            // Auto-fix URL if user forgot /messages/chat
-            let ultraUrl = apiUrl.replace(/\/+$/, ''); // remove trailing slashes
+            let ultraUrl = apiUrl.replace(/\/+$/, '');
             if (!ultraUrl.endsWith('/messages/chat')) {
                 if (ultraUrl.match(/\/instance\d+$/i) || !ultraUrl.includes('/messages/')) {
                     ultraUrl += '/messages/chat';
@@ -52,8 +56,6 @@ export const sendWhatsAppBackgroundMessage = async (phone: string, message: stri
             formData.append('to', formattedPhone);
             formData.append('body', message);
 
-            console.log('📤 Sending via UltraMsg POST to:', ultraUrl);
-
             const response = await fetch(ultraUrl, {
                 method: 'POST',
                 headers: {
@@ -64,53 +66,37 @@ export const sendWhatsAppBackgroundMessage = async (phone: string, message: stri
 
             if (response.ok) {
                 let data: any = {};
-                try { data = await response.json(); } catch { /* ignore parse errors */ }
-                console.log('✅ UltraMsg Response:', data);
-
-                // UltraMsg returns different formats depending on the plan
-                // Any 200 OK response means the message was accepted
+                try { data = await response.json(); } catch { /* ignore */ }
                 const isFailed = data.error || data.sent === 'false' || data.sent === false;
 
                 if (isFailed) {
                     const errorMsg = data.error || data.message || JSON.stringify(data);
-                    console.warn('⚠️ UltraMsg error:', errorMsg);
-                    toast.error(`⚠️ خطأ من UltraMsg: ${errorMsg}`, { duration: 5000 });
+                    toast.error(`⚠️ خطأ من UltraMsg: ${errorMsg}`);
                     return false;
                 }
 
-                toast.success(`✅ تم إرسال رسالة واتساب للعميل ${formattedPhone}`, { duration: 4000 });
+                toast.success(`✅ تم إرسال رسالة واتساب للعميل ${formattedPhone}`);
                 return true;
             } else {
-                const errorText = await response.text();
-                console.error('❌ UltraMsg HTTP Error:', response.status, errorText);
-                toast.error(`❌ خطأ HTTP ${response.status} من UltraMsg`, { duration: 5000 });
+                toast.error(`❌ خطأ HTTP ${response.status} من UltraMsg`);
                 return false;
             }
         } else {
-            // Fallback for GET-based providers like CallMeBot
-            const queryParams = new URLSearchParams({
-                phone: formattedPhone,
-                text: message,
-                apikey: apiToken
-            });
+            const queryParams = new URLSearchParams({ phone: formattedPhone, text: message, apikey: apiToken });
             const separator = apiUrl.includes('?') ? '&' : '?';
-            const fullUrl = `${apiUrl}${separator}${queryParams.toString()}`;
-
-            await fetch(fullUrl, { method: 'GET', mode: 'no-cors' });
-            toast.success(`✅ تم إرسال رسالة واتساب لـ ${formattedPhone}`, { duration: 4000 });
+            await fetch(`${apiUrl}${separator}${queryParams.toString()}`, { method: 'GET', mode: 'no-cors' });
+            toast.success(`✅ تم إرسال رسالة واتساب لـ ${formattedPhone}`);
             return true;
         }
     } catch (error: any) {
-        console.error('❌ Error sending WhatsApp message:', error);
-        toast.error(`❌ فشل إرسال الواتساب: ${error.message || 'خطأ غير معروف'}`, { duration: 5000 });
+        toast.error(`❌ فشل إرسال الواتساب: ${error.message || 'خطأ غير معروف'}`);
         return false;
     }
 };
 
-// Test function to verify WhatsApp API connection from Settings page
-export const testWhatsAppConnection = async (testPhone: string): Promise<boolean> => {
-    const apiUrl = localStorage.getItem('pos_whatsapp_api_url') || '';
-    const apiToken = localStorage.getItem('pos_whatsapp_api_token') || '';
+export const testWhatsAppConnection = async (testPhone: string, settings?: { apiUrl: string; apiToken: string }): Promise<boolean> => {
+    const apiUrl = settings?.apiUrl || localStorage.getItem('pos_whatsapp_api_url') || '';
+    const apiToken = settings?.apiToken || localStorage.getItem('pos_whatsapp_api_token') || '';
 
     if (!apiUrl || !apiToken) {
         toast.error('⚠️ يرجى إدخال رابط API والتوكن أولاً');
@@ -118,7 +104,11 @@ export const testWhatsAppConnection = async (testPhone: string): Promise<boolean
     }
 
     toast('جاري إرسال رسالة تجريبية...', { icon: '⏳' });
-    return sendWhatsAppBackgroundMessage(testPhone, '✅ رسالة تجريبية من نظام المطعم - التوصيل يعمل بنجاح!');
+    return sendWhatsAppBackgroundMessage(testPhone, '✅ رسالة تجريبية من نظام المطعم - التوصيل يعمل بنجاح!', {
+        apiUrl,
+        apiToken,
+        isSimulated: false
+    });
 };
 
 export const getInvoiceMessage = (customer: Customer, orderDetails: any, isRtl: boolean) => {

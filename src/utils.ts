@@ -6,17 +6,22 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function formatCurrency(amount: number, isRtl: boolean = false) {
-  const currency = localStorage.getItem('pos_currency') || 'EGP';
+export function formatCurrency(amount: number | undefined | null, isRtl: boolean = false, overrideCurrency?: string) {
+  const currency = overrideCurrency || localStorage.getItem('pos_currency') || 'EGP';
+  const validAmount = amount || 0;
 
   if (currency === 'EGP') {
-    return isRtl ? `${amount.toFixed(2)} ج.م` : `EGP ${amount.toFixed(2)}`;
+    return isRtl ? `${validAmount.toFixed(2)} ج.م` : `EGP ${validAmount.toFixed(2)}`;
   }
 
-  return new Intl.NumberFormat(isRtl ? 'ar-EG' : 'en-US', {
-    style: 'currency',
-    currency: currency,
-  }).format(amount);
+  try {
+    return new Intl.NumberFormat(isRtl ? 'ar-EG' : 'en-US', {
+      style: 'currency',
+      currency: currency,
+    }).format(validAmount);
+  } catch (e) {
+    return isRtl ? `${validAmount.toFixed(2)} ${currency}` : `${currency} ${validAmount.toFixed(2)}`;
+  }
 }
 
 export function checkAccess(user: User | null | undefined, tabId: string, defaultRoles: string[]): boolean {

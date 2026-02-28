@@ -5,6 +5,7 @@ import { collection, addDoc, serverTimestamp, setDoc, doc } from 'firebase/fires
 import { Category, Product, OrderItem } from '../types';
 import { cn } from '../utils';
 import toast, { Toaster } from 'react-hot-toast';
+import { motion, AnimatePresence } from 'framer-motion';
 import { listenToCategories, listenToProducts, listenToStoreSettings, listenToRestaurantCategories, listenToRestaurantProducts } from '../services/db';
 
 interface PublicMenuProps {
@@ -12,6 +13,7 @@ interface PublicMenuProps {
     restaurantLogo?: string;
     restaurantId?: string;  // If provided, reads menu from restaurant subcollection
     theme?: { primaryColor: string; secondaryColor: string };
+    currency?: string;
 }
 
 export const PublicMenu: React.FC<PublicMenuProps> = ({ restaurantName: propName, restaurantLogo: propLogo, restaurantId, theme: propTheme }) => {
@@ -33,9 +35,10 @@ export const PublicMenu: React.FC<PublicMenuProps> = ({ restaurantName: propName
 
     // Store info (from Firestore so it works on any device)
     // If props are provided (from multi-tenant route), use them; otherwise fetch from Firestore
-    const [storeSettings, setStoreSettings] = useState<{ name?: string; logo?: string }>({});
+    const [storeSettings, setStoreSettings] = useState<{ name?: string; logo?: string; currency?: string }>({});
     const restaurantName = propName || storeSettings.name || 'مطعمنا';
     const restaurantLogo = propLogo !== undefined ? propLogo : (storeSettings.logo || '');
+    const currency = storeSettings.currency || 'EGP';
 
     // Apply theme from props if provided
     useEffect(() => {
@@ -46,10 +49,9 @@ export const PublicMenu: React.FC<PublicMenuProps> = ({ restaurantName: propName
     }, [propTheme]);
 
     useEffect(() => {
-        // Only fetch store settings from Firestore if no props were provided
         let unsubSettings: (() => void) | undefined;
-        if (!propName) {
-            unsubSettings = listenToStoreSettings((data) => {
+        if (restaurantId) {
+            unsubSettings = listenToStoreSettings(restaurantId, (data) => {
                 setStoreSettings(data);
             });
         }
@@ -67,14 +69,12 @@ export const PublicMenu: React.FC<PublicMenuProps> = ({ restaurantName: propName
                 setIsLoading(false);
             });
         } else {
-            // Legacy: read from global collections (for /menu route)
-            unsubCats = listenToCategories((cats) => {
-                setCategories(cats);
-            });
-            unsubProds = listenToProducts((prods) => {
-                setProducts(prods.filter(p => p.active !== false));
-                setIsLoading(false);
-            });
+            // Legacy: Global collections for /menu route - these need a default ID or handle differently
+            // In a multi-tenant app, /menu without an ID is ambiguous. 
+            // We'll keep it as a fallback but suggest using /:restaurantId
+            unsubCats = () => { };
+            unsubProds = () => { };
+            setIsLoading(false);
         }
 
         return () => {
@@ -167,7 +167,7 @@ export const PublicMenu: React.FC<PublicMenuProps> = ({ restaurantName: propName
             if (customerWhatsapp) customerData.whatsapp = customerWhatsapp;
             if (customerBirthday) customerData.birthday = customerBirthday;
 
-            // 1. Create Online Order in `online_orders` collection
+            // 1. Create Online Order in the correct collection
             const newOrder: any = {
                 type: 'delivery',
                 status: 'pending_online',
@@ -178,7 +178,11 @@ export const PublicMenu: React.FC<PublicMenuProps> = ({ restaurantName: propName
                 created_at_server: serverTimestamp(),
             };
 
-            await addDoc(collection(db, 'online_orders'), newOrder);
+            const ordersCol = restaurantId
+                ? collection(db, 'restaurants', restaurantId, 'online_orders')
+                : collection(db, 'online_orders');
+
+            await addDoc(ordersCol, newOrder);
 
             // 2. Save/Update Customer internally for marketing
             const phoneId = customerPhone.replace(/\D/g, '');
@@ -193,7 +197,11 @@ export const PublicMenu: React.FC<PublicMenuProps> = ({ restaurantName: propName
                 else custData.whatsapp = customerPhone;
                 if (customerBirthday) custData.birthday = customerBirthday;
 
-                await setDoc(doc(db, 'customers', phoneId), custData, { merge: true });
+                const customerDoc = restaurantId
+                    ? doc(db, 'restaurants', restaurantId, 'customers', phoneId)
+                    : doc(db, 'customers', phoneId);
+
+                await setDoc(customerDoc, custData, { merge: true });
             }
 
             setCart([]);
@@ -232,7 +240,7 @@ export const PublicMenu: React.FC<PublicMenuProps> = ({ restaurantName: propName
 
     const filteredProducts = activeCategory === 'all'
         ? products
-        : products.filter(p => p.category_id === activeCategory);
+        : products.filter(p => p.category_id.toString() === activeCategory.toString());
 
     return (
         <div className="min-h-screen bg-slate-50 font-arabic pb-24" dir="rtl">
@@ -268,23 +276,23 @@ export const PublicMenu: React.FC<PublicMenuProps> = ({ restaurantName: propName
                         <button
                             onClick={() => setActiveCategory('all')}
                             className={cn(
-                                "px-5 py-2 rounded-full whitespace-nowrap font-bold transition-colors border",
+                                "px-6 py-2.5 rounded-full whitespace-nowrap font-bold transition-all duration-300 border flex items-center gap-2",
                                 activeCategory === 'all'
-                                    ? "bg-brand-600 text-white border-brand-600"
-                                    : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                                    ? "bg-brand-600 text-white border-brand-600 shadow-lg shadow-brand-500/30 scale-105"
+                                    : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:border-brand-200"
                             )}
                         >
-                            الكل
+                            📦 الكل
                         </button>
                         {categories.map(cat => (
                             <button
                                 key={cat.id}
                                 onClick={() => setActiveCategory(cat.id.toString())}
                                 className={cn(
-                                    "px-5 py-2 rounded-full whitespace-nowrap font-bold transition-colors border",
+                                    "px-6 py-2.5 rounded-full whitespace-nowrap font-bold transition-all duration-300 border flex items-center gap-2",
                                     activeCategory === cat.id.toString()
-                                        ? "bg-brand-600 text-white border-brand-600"
-                                        : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                                        ? "bg-brand-600 text-white border-brand-600 shadow-lg shadow-brand-500/30 scale-105"
+                                        : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:border-brand-200"
                                 )}
                             >
                                 {cat.name_ar || cat.name}
@@ -301,76 +309,78 @@ export const PublicMenu: React.FC<PublicMenuProps> = ({ restaurantName: propName
                         جاري تحميل المنيو...
                     </div>
                 ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {filteredProducts.map(product => {
-                            const hasSizes = !!product.sizes && Object.keys(product.sizes).length > 0;
-                            return (
-                                <div key={product.id} className="bg-white rounded-3xl overflow-hidden shadow-sm border border-slate-100 hover:shadow-md transition-shadow">
-                                    <div className="aspect-video w-full bg-slate-100 relative">
-                                        <img
-                                            src={getProductImage(product)}
-                                            alt={product.name_ar || product.name}
-                                            className="w-full h-full object-cover"
-                                        />
-                                    </div>
-                                    <div className="p-4">
-                                        <h3 className="font-bold text-lg text-slate-800 mb-1">{product.name_ar || product.name}</h3>
+                    <motion.div
+                        layout
+                        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+                    >
+                        <AnimatePresence mode='popLayout'>
+                            {filteredProducts.map(product => {
+                                const hasSizes = !!product.sizes && Object.keys(product.sizes).length > 0;
+                                return (
+                                    <motion.div
+                                        key={product.id}
+                                        layout
+                                        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                                        exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                                        transition={{ duration: 0.3 }}
+                                        className="bg-white rounded-3xl overflow-hidden shadow-sm border border-slate-100 hover:shadow-xl hover:-translate-y-1 transition-all duration-300"
+                                    >
+                                        <div className="aspect-video w-full bg-slate-100 relative overflow-hidden">
+                                            <img
+                                                src={getProductImage(product)}
+                                                alt={product.name_ar || product.name}
+                                                className="w-full h-full object-cover transition-transform duration-500 hover:scale-110"
+                                            />
+                                        </div>
+                                        <div className="p-5">
+                                            <h3 className="font-bold text-lg text-slate-800 mb-1">{product.name_ar || product.name}</h3>
 
-                                        {!hasSizes ? (
-                                            <div className="flex justify-between items-center mt-4">
-                                                <span className="font-black hover-text text-xl">{product.price.toFixed(2)}</span>
-                                                <button
-                                                    onClick={() => addToCart(product)}
-                                                    className="w-10 h-10 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center hover:bg-brand-600 hover:text-white transition-colors"
-                                                >
-                                                    <Plus size={20} />
-                                                </button>
-                                            </div>
-                                        ) : (
-                                            <div className="mt-4 space-y-2">
-                                                {product.sizes?.mini && (
-                                                    <div className="flex justify-between items-center text-sm">
-                                                        <span className="text-slate-600">ميني</span>
-                                                        <div className="flex items-center gap-3">
-                                                            <span className="font-bold">{product.sizes.mini.toFixed(2)}</span>
-                                                            <button onClick={() => addToCart(product, 'mini')} className="p-1.5 rounded-lg bg-brand-50 text-brand-600 hover:bg-brand-600 hover:text-white"><Plus size={16} /></button>
-                                                        </div>
+                                            {!hasSizes ? (
+                                                <div className="flex justify-between items-center mt-4">
+                                                    <div className="flex flex-col">
+                                                        <span className="text-2xl font-black text-brand-600">
+                                                            {product.price.toFixed(2)}
+                                                        </span>
+                                                        <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">{currency}</span>
                                                     </div>
-                                                )}
-                                                {product.sizes?.medium && (
-                                                    <div className="flex justify-between items-center text-sm">
-                                                        <span className="text-slate-600">وسط</span>
-                                                        <div className="flex items-center gap-3">
-                                                            <span className="font-bold">{product.sizes.medium.toFixed(2)}</span>
-                                                            <button onClick={() => addToCart(product, 'medium')} className="p-1.5 rounded-lg bg-brand-50 text-brand-600 hover:bg-brand-600 hover:text-white"><Plus size={16} /></button>
-                                                        </div>
-                                                    </div>
-                                                )}
-                                                {product.sizes?.large && (
-                                                    <div className="flex justify-between items-center text-sm">
-                                                        <span className="text-slate-600">كبير</span>
-                                                        <div className="flex items-center gap-3">
-                                                            <span className="font-bold">{product.sizes.large.toFixed(2)}</span>
-                                                            <button onClick={() => addToCart(product, 'large')} className="p-1.5 rounded-lg bg-brand-50 text-brand-600 hover:bg-brand-600 hover:text-white"><Plus size={16} /></button>
-                                                        </div>
-                                                    </div>
-                                                )}
-                                                {product.sizes?.roll && (
-                                                    <div className="flex justify-between items-center text-sm">
-                                                        <span className="text-slate-600">رول</span>
-                                                        <div className="flex items-center gap-3">
-                                                            <span className="font-bold">{product.sizes.roll.toFixed(2)}</span>
-                                                            <button onClick={() => addToCart(product, 'roll')} className="p-1.5 rounded-lg bg-brand-50 text-brand-600 hover:bg-brand-600 hover:text-white"><Plus size={16} /></button>
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
+                                                    <button
+                                                        onClick={() => addToCart(product)}
+                                                        className="h-12 w-12 rounded-2xl bg-brand-50 text-brand-600 flex items-center justify-center hover:bg-brand-600 hover:text-white transition-all duration-300 shadow-sm active:scale-95"
+                                                    >
+                                                        <Plus size={24} />
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <div className="mt-4 space-y-3">
+                                                    {Object.entries(product.sizes || {}).map(([size, price]) => (
+                                                        price ? (
+                                                            <div key={size} className="flex justify-between items-center bg-slate-50/50 p-2 rounded-xl border border-slate-100 hover:border-brand-100 transition-colors">
+                                                                <span className="text-sm font-bold text-slate-600">
+                                                                    {size === 'mini' ? 'ميني' : size === 'medium' ? 'وسط' : size === 'large' ? 'كبير' : 'رول'}
+                                                                </span>
+                                                                <div className="flex items-center gap-3">
+                                                                    <span className="font-black text-brand-600">
+                                                                        {Number(price).toFixed(2)} <span className="text-[9px] font-normal opacity-70 uppercase">{currency}</span>
+                                                                    </span>
+                                                                    <button
+                                                                        onClick={() => addToCart(product, size as any)}
+                                                                        className="p-1.5 rounded-lg bg-white border border-slate-200 text-brand-600 hover:bg-brand-600 hover:text-white hover:border-brand-600 transition-all shadow-sm active:scale-90"
+                                                                    >
+                                                                        <Plus size={16} />
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        ) : null
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </motion.div>
+                                );
+                            })}
+                        </AnimatePresence>
+                    </motion.div>
                 )}
             </main>
 

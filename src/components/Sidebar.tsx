@@ -13,16 +13,18 @@ import {
   Bell,
   Wallet,
   Shield,
-  ShoppingBag
+  ShoppingBag,
+  Store
 } from 'lucide-react';
 import { cn, checkAccess } from '../utils';
 import { listenToInventory } from '../services/db';
 import { db } from '../lib/firebase';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import toast from 'react-hot-toast';
+import { useRestaurantId } from '../context/RestaurantContext';
 
 interface Ingredient {
-  id: number;
+  id: number | string;
   name: string;
   stock_level: number;
   min_stock: number;
@@ -39,6 +41,7 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, isRtl, setIsRtl, user, onLogout }) => {
+  const restaurantId = useRestaurantId();
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<Ingredient[]>([]);
   const [onlineOrdersCount, setOnlineOrdersCount] = useState(0);
@@ -77,7 +80,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, isRtl
 
   useEffect(() => {
     // Listen to real-time inventory updates for low stock notifications
-    const unsub = listenToInventory((data: Ingredient[]) => {
+    const unsub = listenToInventory(restaurantId, (data: Ingredient[]) => {
       const lowStock = data.filter(item => item.stock_level <= item.min_stock);
       setNotifications(lowStock);
 
@@ -93,8 +96,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, isRtl
       });
     });
 
-    // Listen to online orders
-    const q = query(collection(db, 'online_orders'), where('status', '==', 'pending_online'));
+    // Listen to online orders scoped to this restaurant
+    const q = query(
+      collection(db, 'restaurants', restaurantId, 'online_orders'),
+      where('status', '==', 'pending_online')
+    );
     const unsubOrders = onSnapshot(q, (snapshot) => {
       setOnlineOrdersCount(snapshot.docs.length);
 
@@ -117,7 +123,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, isRtl
       unsub();
       unsubOrders();
     };
-  }, [isRtl]);
+  }, [isRtl, restaurantId]);
   const menuItems = [
     { id: 'pos', icon: ShoppingCart, label: isRtl ? 'نقطة البيع' : 'POS', roles: ['admin', 'cashier'] },
     { id: 'online_orders', icon: ShoppingBag, label: isRtl ? 'طلبات الأونلاين' : 'Online Orders', roles: ['admin', 'cashier'], badge: onlineOrdersCount },
@@ -129,6 +135,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, isRtl
     { id: 'expenses', icon: Wallet, label: isRtl ? 'المصروفات' : 'Expenses', roles: ['admin', 'cashier'] },
     { id: 'reports', icon: BarChart3, label: isRtl ? 'التقارير' : 'Reports', roles: ['admin'] },
     { id: 'settings', icon: Settings, label: isRtl ? 'الإعدادات' : 'Settings', roles: ['admin'] },
+    { id: 'view_menu', icon: Store, label: isRtl ? 'المنيو المباشر' : 'Live Menu', roles: ['admin', 'cashier'], external: true },
   ].filter(item => checkAccess(user, item.id, item.roles));
 
   return (
@@ -142,10 +149,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, isRtl
       </div>
 
       <nav className="flex-1 flex md:flex-col flex-row justify-around md:justify-start gap-1 md:gap-4 w-full md:px-2 items-center overflow-y-auto no-scrollbar pb-2 md:pb-0">
-        {menuItems.map((item) => (
+        {menuItems.map((item: any) => (
           <button
             key={item.id}
-            onClick={() => setActiveTab(item.id)}
+            onClick={() => {
+              if (item.external) {
+                window.open(`/${restaurantId}`, '_blank');
+              } else {
+                setActiveTab(item.id);
+              }
+            }}
             className={cn(
               "p-2 md:p-3 rounded-xl transition-all duration-200 flex flex-col items-center gap-1 group relative",
               activeTab === item.id

@@ -6,6 +6,7 @@ import { Invoice } from './Invoice';
 import { listenToOrders } from '../services/db';
 import toast from 'react-hot-toast';
 import { toPng } from 'html-to-image';
+import { useRestaurantId, useRestaurantSettings } from '../context/RestaurantContext';
 
 interface OrderHistoryItem {
   id: number | string;
@@ -29,6 +30,8 @@ interface OrderHistoryProps {
 }
 
 export const OrderHistory: React.FC<OrderHistoryProps> = ({ isRtl, onClose, onReorder }) => {
+  const restaurantId = useRestaurantId();
+  const settings = useRestaurantSettings();
   const [orders, setOrders] = useState<OrderHistoryItem[]>([]);
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'delivery'>('all');
@@ -39,7 +42,7 @@ export const OrderHistory: React.FC<OrderHistoryProps> = ({ isRtl, onClose, onRe
 
   useEffect(() => {
     setLoading(true);
-    const unsub = listenToOrders((data) => {
+    const unsub = listenToOrders(restaurantId, (data) => {
       let filtered = data as OrderHistoryItem[];
       if (search) {
         const lowerSearch = search.toLowerCase();
@@ -57,7 +60,7 @@ export const OrderHistory: React.FC<OrderHistoryProps> = ({ isRtl, onClose, onRe
     });
 
     return () => unsub();
-  }, [search, filterType]);
+  }, [search, filterType, restaurantId]);
 
   const deliveryStats = useMemo(() => {
     if (filterType !== 'delivery') return null;
@@ -77,8 +80,7 @@ export const OrderHistory: React.FC<OrderHistoryProps> = ({ isRtl, onClose, onRe
       }));
 
       const total = cartItems.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0);
-      const taxRateStr = localStorage.getItem('pos_tax_rate');
-      const taxRate = taxRateStr !== null ? Number(taxRateStr) : 15;
+      const taxRate = settings.tax_rate !== undefined ? Number(settings.tax_rate) : 15;
       const tax = total * (taxRate / 100);
 
       setPrintData({
@@ -115,8 +117,7 @@ export const OrderHistory: React.FC<OrderHistoryProps> = ({ isRtl, onClose, onRe
       }));
 
       const total = cartItems.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0);
-      const taxRateStr = localStorage.getItem('pos_tax_rate');
-      const taxRate = taxRateStr !== null ? Number(taxRateStr) : 15;
+      const taxRate = settings.tax_rate !== undefined ? Number(settings.tax_rate) : 15;
       const tax = total * (taxRate / 100);
 
       setScreenshotData({

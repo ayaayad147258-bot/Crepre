@@ -5,12 +5,14 @@ import { generateWhatsAppLink, getBirthdayMessage } from '../utils/whatsapp';
 import { listenToCustomers, addCustomer, updateCustomer, deleteCustomer } from '../services/db';
 import { Customer } from '../types';
 import toast from 'react-hot-toast';
+import { useRestaurantId } from '../context/RestaurantContext';
 
 interface CustomersProps {
     isRtl: boolean;
 }
 
 export const Customers: React.FC<CustomersProps> = ({ isRtl }) => {
+    const restaurantId = useRestaurantId();
     const [customers, setCustomers] = useState<Customer[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -31,9 +33,9 @@ export const Customers: React.FC<CustomersProps> = ({ isRtl }) => {
     });
 
     useEffect(() => {
-        const unsub = listenToCustomers(setCustomers);
+        const unsub = listenToCustomers(restaurantId, setCustomers);
         return () => unsub();
-    }, []);
+    }, [restaurantId]);
 
     const handleOpenModal = (customer?: Customer) => {
         if (customer) {
@@ -66,10 +68,10 @@ export const Customers: React.FC<CustomersProps> = ({ isRtl }) => {
 
         try {
             if (editingCustomer) {
-                await updateCustomer(editingCustomer.id, formData);
+                await updateCustomer(restaurantId, editingCustomer.id, formData);
                 toast.success(isRtl ? 'تم تحديث بيانات العميل' : 'Customer updated');
             } else {
-                await addCustomer(formData);
+                await addCustomer(restaurantId, formData);
                 toast.success(isRtl ? 'تم إضافة العميل بنجاح' : 'Customer added');
             }
             handleCloseModal();
@@ -82,7 +84,7 @@ export const Customers: React.FC<CustomersProps> = ({ isRtl }) => {
     const handleDelete = async (id: string) => {
         if (confirm(isRtl ? 'هل أنت متأكد من حذف هذا العميل؟' : 'Are you sure you want to delete this customer?')) {
             try {
-                await deleteCustomer(id);
+                await deleteCustomer(restaurantId, id);
                 toast.success(isRtl ? 'تم الحذف بنجاح' : 'Deleted successfully');
             } catch (error) {
                 toast.error(isRtl ? 'حدث خطأ' : 'An error occurred');

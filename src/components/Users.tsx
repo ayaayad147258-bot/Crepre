@@ -32,24 +32,28 @@ import { cn } from '../utils';
 import { collection, getDocs, addDoc, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import toast from 'react-hot-toast';
+import { useRestaurantId } from '../context/RestaurantContext';
 
 interface UsersProps {
     isRtl: boolean;
 }
 
 export const Users: React.FC<UsersProps> = ({ isRtl }) => {
+    const restaurantId = useRestaurantId();
     const [users, setUsers] = useState<any[]>([]);
     const [newUser, setNewUser] = useState({ username: '', password: '', role: 'cashier' });
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        fetchUsers();
-    }, []);
+        if (restaurantId) {
+            fetchUsers();
+        }
+    }, [restaurantId]);
 
     const fetchUsers = async () => {
         try {
             setLoading(true);
-            const querySnapshot = await getDocs(collection(db, 'users'));
+            const querySnapshot = await getDocs(collection(db, 'restaurants', restaurantId, 'users'));
             const usersData = querySnapshot.docs.map(doc => ({
                 id: doc.id,
                 ...doc.data()
@@ -67,7 +71,10 @@ export const Users: React.FC<UsersProps> = ({ isRtl }) => {
         e.preventDefault();
         if (!newUser.username || !newUser.password) return;
         try {
-            await addDoc(collection(db, 'users'), newUser);
+            await addDoc(collection(db, 'restaurants', restaurantId, 'users'), {
+                ...newUser,
+                created_at: new Date().toISOString()
+            });
             setNewUser({ username: '', password: '', role: 'cashier' });
             fetchUsers();
             toast.success(isRtl ? 'تم إضافة المستخدم بنجاح' : 'User added successfully');
@@ -84,7 +91,7 @@ export const Users: React.FC<UsersProps> = ({ isRtl }) => {
         }
         if (!confirm(isRtl ? 'هل أنت متأكد من حذف هذا المستخدم؟' : 'Are you sure you want to delete this user?')) return;
         try {
-            await deleteDoc(doc(db, 'users', id));
+            await deleteDoc(doc(db, 'restaurants', restaurantId, 'users', id));
             fetchUsers();
             toast.success(isRtl ? 'تم الحذف بنجاح' : 'User deleted successfully');
         } catch (err) {
@@ -95,7 +102,7 @@ export const Users: React.FC<UsersProps> = ({ isRtl }) => {
 
     const handleUpdateRole = async (id: string, newRole: string) => {
         try {
-            await updateDoc(doc(db, 'users', id), { role: newRole });
+            await updateDoc(doc(db, 'restaurants', restaurantId, 'users', id), { role: newRole });
             fetchUsers();
             toast.success(isRtl ? 'تم تحديث الصلاحية بنجاح' : 'Role updated successfully');
         } catch (err) {

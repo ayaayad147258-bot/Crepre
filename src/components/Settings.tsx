@@ -1,55 +1,116 @@
 import React, { useState, useEffect } from 'react';
 import { Settings as SettingsIcon, Globe, CreditCard, Bell, Shield, Database, Save, Plus, Trash2, User, Key, Check, Bot, Upload, Users, Share2, Copy, MessageCircle } from 'lucide-react';
 import { cn } from '../utils';
-import { collection, getDocs, addDoc, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import toast from 'react-hot-toast';
 import { db } from '../lib/firebase';
-import { addCategory, addProduct } from '../services/db';
+import { addCategory, addProduct, saveStoreSettings, listenToRestaurantUsers, addRestaurantUser, updateRestaurantUser, deleteRestaurantUser } from '../services/db';
 import { parseMenuFile } from '../utils/ai';
 import { testWhatsAppConnection } from '../utils/whatsapp';
-import { saveStoreSettings } from '../services/db';
+import { useRestaurantId, useRestaurantSettings } from '../context/RestaurantContext';
 
 interface SettingsProps {
   isRtl: boolean;
 }
 
 export const Settings: React.FC<SettingsProps> = ({ isRtl }) => {
+  const restaurantId = useRestaurantId();
+  const storeSettings = useRestaurantSettings();
   const [activeTab, setActiveTab] = useState('general');
-  const [restaurantName, setRestaurantName] = useState(localStorage.getItem('pos_restaurant_name') || 'Dineify');
-  const [restaurantLogo, setRestaurantLogo] = useState(localStorage.getItem('pos_restaurant_logo') || '');
-  const [currency, setCurrency] = useState(localStorage.getItem('pos_currency') || 'EGP');
-  const [branchName, setBranchName] = useState(localStorage.getItem('pos_branch_name') || 'فرع القاهرة الرئيسي');
-  const storedTax = localStorage.getItem('pos_tax_rate');
-  const [taxRate, setTaxRate] = useState(storedTax !== null ? Number(storedTax) : 15);
 
-  // Payment
-  const [paymentMethod, setPaymentMethod] = useState(localStorage.getItem('pos_payment_method') || 'cash');
+  // Local state initialized from context settings
+  const [restaurantName, setRestaurantName] = useState(storeSettings.name || 'Dineify');
+  const [restaurantLogo, setRestaurantLogo] = useState(storeSettings.logo || '');
+  const [currency, setCurrency] = useState(storeSettings.currency || 'EGP');
+  const [branchName, setBranchName] = useState(storeSettings.branch || 'الفرع الرئيسي');
+  const [taxRate, setTaxRate] = useState(storeSettings.tax_rate !== undefined ? Number(storeSettings.tax_rate) : 15);
+  const [paymentMethod, setPaymentMethod] = useState(storeSettings.payment_method || 'cash');
 
   // Notifications
-  const [notifyOrder, setNotifyOrder] = useState(localStorage.getItem('pos_notify_order') !== 'false');
-  const [notifyStock, setNotifyStock] = useState(localStorage.getItem('pos_notify_stock') !== 'false');
+  const [notifyOrder, setNotifyOrder] = useState(storeSettings.notify_order !== false);
+  const [notifyStock, setNotifyStock] = useState(storeSettings.notify_stock !== false);
 
-
-
-  const [geminiApiKey, setGeminiApiKey] = useState(localStorage.getItem('pos_gemini_api_key') || '');
-  const [isParsing, setIsParsing] = useState(false);
-
-  // WhatsApp Integration
-  const [waApiUrl, setWaApiUrl] = useState(localStorage.getItem('pos_whatsapp_api_url') || '');
-  const [waApiToken, setWaApiToken] = useState(localStorage.getItem('pos_whatsapp_api_token') || '');
-  const [waSimulate, setWaSimulate] = useState(localStorage.getItem('pos_whatsapp_simulate') !== 'false');
+  // AI & WhatsApp
+  const [geminiApiKey, setGeminiApiKey] = useState(storeSettings.gemini_api_key || '');
+  const [waApiUrl, setWaApiUrl] = useState(storeSettings.whatsapp_api_url || '');
+  const [waApiToken, setWaApiToken] = useState(storeSettings.whatsapp_api_token || '');
+  const [waSimulate, setWaSimulate] = useState(storeSettings.whatsapp_simulate !== false);
   const [waTestPhone, setWaTestPhone] = useState('');
   const [waTestSending, setWaTestSending] = useState(false);
-  const [waMsgOnlineConfirm, setWaMsgOnlineConfirm] = useState(localStorage.getItem('pos_wa_msg_online') || 'مرحباً {name}،\nتم تأكيد طلبك بنجاح وهو الآن قيد التجهيز في المطبخ! 👨‍🍳\nرقم الطلب: {order_id}');
-  const [waMsgDelivery, setWaMsgDelivery] = useState(localStorage.getItem('pos_wa_msg_delivery') || 'مرحباً {name}،\nشكراً لطلبك من مطعمنا!\nالإجمالي: {total}\nنتمنى لك وجبة شهية 🍔');
-  const [waMsgDispatch, setWaMsgDispatch] = useState(localStorage.getItem('pos_wa_msg_dispatch') || 'مرحباً {name}،\nتم تجهيز طلبك وخرج مع الدليفري 🚚\nاسم الطيار: {driver}\nشكراً لاختيارك لنا! ❤️');
+  const [waMsgOnlineConfirm, setWaMsgOnlineConfirm] = useState(storeSettings.wa_msg_online || 'مرحباً {name}،\nتم تأكيد طلبك بنجاح وهو الآن قيد التجهيز في المطبخ! 👨‍🍳\nرقم الطلب: {order_id}');
+  const [waMsgDelivery, setWaMsgDelivery] = useState(storeSettings.wa_msg_delivery || 'مرحباً {name}،\nشكراً لطلبك من مطعمنا!\nالإجمالي: {total}\nنتمنى لك وجبة شهية 🍔');
+  const [waMsgDispatch, setWaMsgDispatch] = useState(storeSettings.wa_msg_dispatch || 'مرحباً {name}،\nتم تجهيز طلبك وخرج مع الدليفري 🚚\nاسم الطيار: {driver}\nشكراً لاختيارك لنا! ❤️');
 
   const [isSaving, setIsSaving] = useState(false);
+  const [isParsing, setIsParsing] = useState(false);
+
+  // Sync state when context settings change (e.g. after first load)
+  useEffect(() => {
+    if (storeSettings && Object.keys(storeSettings).length > 0) {
+      setRestaurantName(storeSettings.name || 'Dineify');
+      setRestaurantLogo(storeSettings.logo || '');
+      setCurrency(storeSettings.currency || 'EGP');
+      setBranchName(storeSettings.branch || 'الفرع الرئيسي');
+      setTaxRate(storeSettings.tax_rate !== undefined ? Number(storeSettings.tax_rate) : 15);
+      setPaymentMethod(storeSettings.payment_method || 'cash');
+      setNotifyOrder(storeSettings.notify_order !== false);
+      setNotifyStock(storeSettings.notify_stock !== false);
+      setGeminiApiKey(storeSettings.gemini_api_key || '');
+      setWaApiUrl(storeSettings.whatsapp_api_url || '');
+      setWaApiToken(storeSettings.whatsapp_api_token || '');
+      setWaSimulate(storeSettings.whatsapp_simulate !== false);
+      setWaMsgOnlineConfirm(storeSettings.wa_msg_online || 'مرحباً {name}،\nتم تأكيد طلبك بنجاح وهو الآن قيد التجهيز في المطبخ! 👨‍🍳\nرقم الطلب: {order_id}');
+      setWaMsgDelivery(storeSettings.wa_msg_delivery || 'مرحباً {name}،\nشكراً لطلبك من مطعمنا!\nالإجمالي: {total}\nنتمنى لك وجبة شهية 🍔');
+      setWaMsgDispatch(storeSettings.wa_msg_dispatch || 'مرحباً {name}،\nتم تجهيز طلبك وخرج مع الدليفري 🚚\nاسم الطيار: {driver}\nشكراً لاختيارك لنا! ❤️');
+    }
+  }, [storeSettings]);
 
   // User Management State
   const [usersList, setUsersList] = useState<any[]>([]);
   const [newUser, setNewUser] = useState({ username: '', password: '', role: 'cashier', permissions: [] as string[] });
   const [usersLoading, setUsersLoading] = useState(false);
+
+  useEffect(() => {
+    if (activeTab === 'users') {
+      const unsub = listenToRestaurantUsers(restaurantId, (users) => {
+        setUsersList(users);
+        setUsersLoading(false);
+      });
+      setUsersLoading(true);
+      return () => unsub();
+    }
+  }, [activeTab, restaurantId]);
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      await saveStoreSettings(restaurantId, {
+        name: restaurantName,
+        logo: restaurantLogo,
+        branch: branchName,
+        currency,
+        tax_rate: taxRate,
+        payment_method: paymentMethod,
+        notify_order: notifyOrder,
+        notify_stock: notifyStock,
+        gemini_api_key: geminiApiKey,
+        whatsapp_api_url: waApiUrl,
+        whatsapp_api_token: waApiToken,
+        whatsapp_simulate: waSimulate,
+        wa_msg_online: waMsgOnlineConfirm,
+        wa_msg_delivery: waMsgDelivery,
+        wa_msg_dispatch: waMsgDispatch,
+      });
+
+      // Update page title
+      document.title = restaurantName || 'Smart Food';
+      toast.success(isRtl ? 'تم حفظ الإعدادات بنجاح' : 'Settings saved successfully');
+    } catch (err) {
+      console.error(err);
+      toast.error(isRtl ? 'فشل في حفظ الإعدادات' : 'Failed to save settings');
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const availablePermissions = [
     { id: 'pos', ar: 'نقطة البيع', en: 'POS' },
@@ -64,36 +125,12 @@ export const Settings: React.FC<SettingsProps> = ({ isRtl }) => {
     { id: 'settings', ar: 'الإعدادات', en: 'Settings' }
   ];
 
-  useEffect(() => {
-    if (activeTab === 'users') {
-      fetchUsers();
-    }
-  }, [activeTab]);
-
-  const fetchUsers = async () => {
-    try {
-      setUsersLoading(true);
-      const querySnapshot = await getDocs(collection(db, 'users'));
-      const usersData = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setUsersList(usersData);
-    } catch (err) {
-      console.error(err);
-      toast.error(isRtl ? 'فشل في تحميل الموظفين' : 'Failed to load staff');
-    } finally {
-      setUsersLoading(false);
-    }
-  };
-
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newUser.username || !newUser.password) return;
     try {
-      await addDoc(collection(db, 'users'), newUser);
+      await addRestaurantUser(restaurantId, newUser);
       setNewUser({ username: '', password: '', role: 'cashier', permissions: [] });
-      fetchUsers();
       toast.success(isRtl ? 'تم إضافة الموظف بنجاح' : 'Staff added successfully');
     } catch (err) {
       console.error(err);
@@ -104,8 +141,7 @@ export const Settings: React.FC<SettingsProps> = ({ isRtl }) => {
   const handleDeleteUser = async (id: string, username: string) => {
     if (!confirm(isRtl ? 'هل أنت متأكد من حذف هذا الموظف؟' : 'Are you sure you want to delete this staff member?')) return;
     try {
-      await deleteDoc(doc(db, 'users', id));
-      fetchUsers();
+      await deleteRestaurantUser(restaurantId, id);
       toast.success(isRtl ? 'تم الحذف بنجاح' : 'Staff deleted successfully');
     } catch (err) {
       console.error(err);
@@ -115,8 +151,7 @@ export const Settings: React.FC<SettingsProps> = ({ isRtl }) => {
 
   const handleUpdateRole = async (id: string, newRole: string) => {
     try {
-      await updateDoc(doc(db, 'users', id), { role: newRole });
-      fetchUsers();
+      await updateRestaurantUser(restaurantId, id, { role: newRole });
       toast.success(isRtl ? 'تم التحديث بنجاح' : 'Updated successfully');
     } catch (err) {
       console.error(err);
@@ -131,50 +166,11 @@ export const Settings: React.FC<SettingsProps> = ({ isRtl }) => {
         ? permissions.filter(p => p !== permissionToToggle)
         : [...permissions, permissionToToggle];
 
-      await updateDoc(doc(db, 'users', id), { permissions: newPermissions });
-      fetchUsers();
+      await updateRestaurantUser(restaurantId, id, { permissions: newPermissions });
     } catch (err) {
       console.error(err);
       toast.error(isRtl ? 'حدث خطأ في التحديث' : 'Failed to update user permissions');
     }
-  };
-
-
-  const handleSave = () => {
-    setIsSaving(true);
-    localStorage.setItem('pos_restaurant_name', restaurantName);
-    localStorage.setItem('pos_restaurant_logo', restaurantLogo);
-    localStorage.setItem('pos_branch_name', branchName);
-    localStorage.setItem('pos_currency', currency);
-    localStorage.setItem('pos_tax_rate', taxRate.toString());
-    localStorage.setItem('pos_payment_method', paymentMethod);
-    localStorage.setItem('pos_notify_order', notifyOrder.toString());
-    localStorage.setItem('pos_notify_stock', notifyStock.toString());
-    localStorage.setItem('pos_gemini_api_key', geminiApiKey);
-    localStorage.setItem('pos_whatsapp_api_url', waApiUrl);
-    localStorage.setItem('pos_whatsapp_api_token', waApiToken);
-    localStorage.setItem('pos_whatsapp_simulate', waSimulate.toString());
-    localStorage.setItem('pos_wa_msg_online', waMsgOnlineConfirm);
-    localStorage.setItem('pos_wa_msg_delivery', waMsgDelivery);
-    localStorage.setItem('pos_wa_msg_dispatch', waMsgDispatch);
-
-    // Also save store info to Firestore so the public menu can read it on any device
-    saveStoreSettings({
-      name: restaurantName,
-      logo: restaurantLogo,
-      branch: branchName,
-      currency,
-    }).catch(console.error);
-
-    // Update page title immediately
-    document.title = restaurantName || 'Smart Food';
-
-    // Simulate API call
-    setTimeout(() => {
-      setIsSaving(false);
-      alert(isRtl ? 'تم حفظ الإعدادات بنجاح' : 'Settings saved successfully');
-      window.location.reload(); // Reload to apply changes globally
-    }, 1000);
   };
 
   return (
@@ -686,12 +682,11 @@ export const Settings: React.FC<SettingsProps> = ({ isRtl }) => {
                               toast.error(isRtl ? 'أدخل رقم للتجربة أولاً' : 'Enter a phone number first');
                               return;
                             }
-                            // Save current values first
-                            localStorage.setItem('pos_whatsapp_api_url', waApiUrl);
-                            localStorage.setItem('pos_whatsapp_api_token', waApiToken);
-                            localStorage.setItem('pos_whatsapp_simulate', 'false');
                             setWaTestSending(true);
-                            await testWhatsAppConnection(waTestPhone);
+                            await testWhatsAppConnection(waTestPhone, {
+                              apiUrl: waApiUrl,
+                              apiToken: waApiToken
+                            });
                             setWaTestSending(false);
                           }}
                           disabled={waTestSending || !waTestPhone}
@@ -815,14 +810,15 @@ export const Settings: React.FC<SettingsProps> = ({ isRtl }) => {
 
                         setIsParsing(true);
                         try {
+                          // parseMenuFile returns ParsedCategory[] - array of categories each with nested products
                           const parsedData = await parseMenuFile(geminiApiKey, file);
-
                           let categoryCount = 0;
                           let productCount = 0;
 
                           for (const cat of parsedData) {
-                            const catRef = await addCategory({ name: cat.name, name_ar: cat.name_ar || cat.name, sort_order: 0, active: true });
+                            const catRef = await addCategory(restaurantId, { name: cat.name, name_ar: cat.name_ar || cat.name, sort_order: 0, active: true });
                             categoryCount++;
+
                             for (const prod of cat.products) {
                               const productData: any = {
                                 category_id: catRef.id,
@@ -836,13 +832,12 @@ export const Settings: React.FC<SettingsProps> = ({ isRtl }) => {
 
                               if (prod.image_query) {
                                 try {
-                                  // Fetch from Wikimedia Commons API
                                   const wikiRes = await fetch(`https://en.wikipedia.org/w/api.php?action=query&format=json&prop=pageimages&generator=search&gsrsearch=${encodeURIComponent(prod.image_query)}&gsrlimit=1&pithumbsize=400&origin=*`);
                                   const wikiData = await wikiRes.json();
                                   if (wikiData.query && wikiData.query.pages) {
                                     const pages = wikiData.query.pages;
                                     const firstPageId = Object.keys(pages)[0];
-                                    if (pages[firstPageId].thumbnail && pages[firstPageId].thumbnail.source) {
+                                    if (pages[firstPageId].thumbnail?.source) {
                                       productData.image = pages[firstPageId].thumbnail.source;
                                     } else {
                                       productData.image = 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&h=400&fit=crop';
@@ -851,16 +846,12 @@ export const Settings: React.FC<SettingsProps> = ({ isRtl }) => {
                                     productData.image = 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&h=400&fit=crop';
                                   }
                                 } catch (e) {
-                                  console.error("Wikimedia fetch error for:", prod.image_query, e);
                                   productData.image = 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&h=400&fit=crop';
                                 }
                               }
 
-                              if (prod.sizes) {
-                                productData.sizes = prod.sizes;
-                              }
-
-                              await addProduct(productData);
+                              if (prod.sizes) productData.sizes = prod.sizes;
+                              await addProduct(restaurantId, productData);
                               productCount++;
                             }
                           }
@@ -868,11 +859,12 @@ export const Settings: React.FC<SettingsProps> = ({ isRtl }) => {
                           alert(isRtl ? `تم استخراج ${categoryCount} أقسام و ${productCount} منتجات بنجاح` : `Successfully extracted ${categoryCount} categories and ${productCount} products`);
                         } catch (err) {
                           console.error(err);
-                          alert(isRtl ? 'فشل استخراج المنيو. يرجى المحاولة مرة أخرى مفتاح صحيح وصورة واضحة.' : 'Failed to parse menu. Please try again with a valid key and clear image.');
+                          alert(isRtl ? 'فشل استخراج المنيو. يرجى المحاولة مرة أخرى بمفتاح صحيح وصورة واضحة.' : 'Failed to parse menu. Please try again with a valid key and clear image.');
                         } finally {
                           setIsParsing(false);
-                          e.target.value = ''; // Reset input
+                          e.target.value = '';
                         }
+
                       }}
                     />
                     <label
